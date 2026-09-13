@@ -84,7 +84,7 @@ export function buildTileInspection(
   if (tile.originalTerrain) tileRows.push({ label: 'Cleanup restores', value: terrainLabel(tile.originalTerrain) });
   if (
     tile.resourceId !== undefined
-    && (deps.isResourceVisible?.(tile.resourceId) ?? true)
+    && (tile.resourceRevealedByCheat || (deps.isResourceVisible?.(tile.resourceId) ?? true))
   ) {
     tileRows.push({ label: 'Resource', value: getResourceDisplayName(tile.resourceId) });
   }

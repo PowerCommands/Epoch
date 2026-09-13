@@ -200,8 +200,11 @@ export class UnitRenderer {
     this.refreshCargoIndicator(unit, visual);
     this.refreshLevelStars(unit, visual);
 
-    if (unit.isBuildingImprovement() && unit.buildAction !== undefined) {
-      const percent = clampPercent(unit.buildAction.progress, unit.buildAction.requiredProgress);
+    const construction = this.mapData.tiles[unit.tileY]?.[unit.tileX]?.improvementConstruction;
+    const builder = construction?.transportUnitId === unit.id
+      ? this.unitManager.getUnit(construction.unitId) : unit;
+    if (builder?.isBuildingImprovement() && builder.buildAction !== undefined) {
+      const percent = clampPercent(builder.buildAction.progress, builder.buildAction.requiredProgress);
       const label = `${percent}%`;
       if (visual.progressText === undefined) {
         const text = this.scene.add.text(0, 0, label, {
@@ -282,12 +285,6 @@ export class UnitRenderer {
   }
 
   private applyDerivedVisualState(unit: Unit, visual: UnitVisual): void {
-    if (!visual.sprite.texture.key.startsWith('construction_') && isEmbarked(unit, this.mapData)) {
-      visual.sprite.setTint(0x66ccff);
-      visual.sprite.setAlpha(0.88);
-      return;
-    }
-
     visual.sprite.clearTint();
     visual.sprite.setAlpha(1);
   }
@@ -300,6 +297,7 @@ export class UnitRenderer {
       const construction=constructionVisualForTerrain(tile?.type);
       if(this.scene.textures.exists(construction.key)) return construction.key;
     }
+    if (isEmbarked(unit, this.mapData) && this.scene.textures.exists('unit_embarked_boat')) return 'unit_embarked_boat';
     const unitTypeId=unit.unitType.id;
     const baseKey = getUnitSpriteKey(unitTypeId);
     if (this.scene.textures.exists(baseKey)) return baseKey;
@@ -325,7 +323,8 @@ export class UnitRenderer {
   }
 
   private refreshCargoIndicator(unit: Unit, visual: UnitVisual): void {
-    const count = unit.cargoUnitIds.filter((id) => this.unitManager.getUnit(id) !== undefined).length;
+    const count = isEmbarked(unit, this.mapData) ? 1
+      : unit.cargoUnitIds.filter((id) => this.unitManager.getUnit(id) !== undefined).length;
     if (count === 0) {
       if (visual.cargoIndicator) {
         visual.cargoIndicator.destroy();

@@ -441,16 +441,19 @@ export class CheatSystem {
 
     this.register({
       name: 'resource',
-      description: 'Place a natural resource on the selected tile and assign the tile to a nation so it counts. Usage: "resource <resourceId> [nation]" (nation defaults to the player). Ignores tile-type and tech restrictions.',
+      description: 'Place and reveal a natural resource on the selected tile without changing ownership. Usage: "resource <resourceId>". Ignores tile-type and reveal restrictions.',
       execute: (args, context) => {
         const resourceArg = args[0];
-        if (resourceArg === undefined || args.length > 2) return 'Usage: resource <resourceId> [nation]';
+        if (resourceArg === undefined || args.length > 2) return 'Usage: resource <resourceId>';
 
         const resource = resolveNaturalResource(resourceArg);
         if (!resource.ok) return resource.message;
 
-        const target = resolveNationId(args[1], context);
-        if (!target.ok) return target.message;
+        // Accept the legacy nation argument, but never transfer any ownership.
+        if (args[1] !== undefined) {
+          const target = resolveNationId(args[1], context);
+          if (!target.ok) return target.message;
+        }
 
         const selection = context.selectionManager.getSelected();
         const position = selection ? selectionTilePosition(selection) : null;
@@ -458,29 +461,21 @@ export class CheatSystem {
         const tile = context.mapData.tiles[position.y]?.[position.x];
         if (!tile) return 'No tile selected';
 
-        // Place the resource and hand the tile to the target nation: tile
-        // ownership is the game's own precondition for the resource to count
-        // toward that nation's access (yields already read the tile directly).
         tile.resourceId = resource.resource.id;
-        tile.ownerId = target.nationId;
+        tile.resourceRevealedByCheat = true;
         // The resource-access layer caches a tile index built once at load; it
         // must be invalidated for the newly placed resource to be visible.
         context.resourceAccessSystem.invalidateResourceIndex();
         context.refreshTileVisuals(position.x, position.y);
 
-        // Access is still gated by the resource's required technology, so note
-        // when the target cannot yet use it (the yield bonus applies regardless).
         const requiredTechId = resource.resource.requiredTechId;
-        const techNote = requiredTechId && !context.researchSystem.isResearched(target.nationId, requiredTechId)
-          ? ` (${target.label} needs ${getTechnologyName(requiredTechId)} to access it; the tile yield applies regardless)`
+        const ownerId = tile.resourceOwnerNationId ?? tile.ownerId;
+        const techNote = ownerId && requiredTechId && !context.researchSystem.isResearched(ownerId, requiredTechId)
+          ? ` (the owner needs ${getTechnologyName(requiredTechId)} to access it; the tile yield applies regardless)`
           : '';
-        return `Placed ${resource.resource.name} on the selected tile for ${target.label}${techNote}`;
+        return `Placed ${resource.resource.name} on the selected tile. Ownership unchanged.${techNote}`;
       },
-      complete: (args, context) => {
-        if (args.length === 1) return completeResource(args[0]);
-        if (args.length === 2) return completeNation(args[1], context);
-        return [];
-      },
+      complete: (args) => args.length === 1 ? completeResource(args[0]) : [],
     });
 
     this.register({
@@ -542,6 +537,7 @@ export class CheatSystem {
           tile.ownerId = undefined;
           tile.resourceOwnerNationId = undefined;
           tile.resourceId = undefined;
+          tile.resourceRevealedByCheat = undefined;
           tile.improvementId = undefined;
           tile.improvementOwnerId = undefined;
           tile.improvementConstruction = undefined;

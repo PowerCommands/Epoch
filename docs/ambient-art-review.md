@@ -72,7 +72,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | settler | Hand at belt, fixed pack and legs. |
 | archaeologist | Gloved hand, fixed hat and grounded boots. |
 | horseman | Classic painted chestnut horse, steel armor and brown tack matching Cavalry; natural shadows without the old brightness filter. Existing riding gait preserved. |
-| knight | Original mounted artwork lit 3.2× with preserved alpha; continuous 1.25-second riding cycle with opposing front/rear strides, hoof lift, body bounce and rider following the saddle. |
+| knight | Polished medieval plate armor on a chestnut horse, with natural highlights and preserved alpha; continuous 1.25-second riding cycle with opposing front/rear strides, hoof lift, body bounce and rider following the saddle. |
 | cavalry | Right-facing horse head; reins and rider remain coherent. |
 | caravan | Left ox muzzle; wagon, wheels and cargo stay rigid. |
 | chariot_archer | Bow draw, release and visible arrow; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
@@ -120,6 +120,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | missile_cruiser | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | submarine | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | nuclear_submarine | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
+| embarked_boat | Small side-profile launch for independently embarked land units, with pronounced rigid hull heave and a waterline ripple. The renderer adds cargo badge 1; boarding hides the passenger and landing restores its unit portrait. |
 | cargo_ship | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | transport_ship | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | scout_boat | Lookout, hands and telescope sweep together at the waist through ±0.20 radians every three seconds. Legs, hull and mast stay fixed; ripple at the waterline. |

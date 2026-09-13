@@ -668,7 +668,7 @@
           "name": "solar_panels.png",
           "path": "/assets/sprites/buildings/solar_panels.png",
           "type": "PNG",
-          "size": 1684833
+          "size": 1847670
         },
         {
           "name": "solar_plant-broken.png",
@@ -3875,6 +3875,12 @@
           "size": 53325
         },
         {
+          "name": "embarked_boat.png",
+          "path": "/assets/sprites/units/embarked_boat.png",
+          "type": "PNG",
+          "size": 955510
+        },
+        {
           "name": "fighter.png",
           "path": "/assets/sprites/units/fighter.png",
           "type": "PNG",
@@ -3956,7 +3962,7 @@
           "name": "knight.png",
           "path": "/assets/sprites/units/knight.png",
           "type": "PNG",
-          "size": 30437
+          "size": 1421793
         },
         {
           "name": "lancer.png",
@@ -4100,7 +4106,7 @@
           "name": "spy.png",
           "path": "/assets/sprites/units/spy.png",
           "type": "PNG",
-          "size": 68981
+          "size": 1244998
         },
         {
           "name": "stealth_bomber.png",

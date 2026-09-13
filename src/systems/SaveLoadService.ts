@@ -504,6 +504,7 @@ export class SaveLoadService {
           resourceOwnerNationId: tile.improvementId !== undefined ? tile.resourceOwnerNationId : undefined,
           riverConnections: tile.riverConnections,
           resourceId: tile.resourceId,
+          resourceRevealedByCheat: tile.resourceId ? tile.resourceRevealedByCheat : undefined,
           improvementId: tile.improvementId,
           // Never persist ownership metadata without its completed improvement.
           improvementOwnerId: tile.improvementId !== undefined ? tile.improvementOwnerId : undefined,
@@ -735,6 +736,7 @@ export class SaveLoadService {
         tile.ownerId = undefined;
         tile.resourceOwnerNationId = undefined;
         tile.resourceId = undefined;
+        tile.resourceRevealedByCheat = undefined;
         tile.improvementId = undefined;
         tile.improvementOwnerId = undefined;
         tile.improvementConstruction = undefined;
@@ -754,7 +756,10 @@ export class SaveLoadService {
       tile.originalTerrain = saved.originalTerrain;
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
       if (saved.riverConnections !== undefined) tile.riverConnections = riverMask(saved.riverConnections) || undefined;
-      if (saved.resourceId !== undefined) tile.resourceId = saved.resourceId;
+      if (saved.resourceId !== undefined) {
+        tile.resourceId = saved.resourceId;
+        tile.resourceRevealedByCheat = saved.resourceRevealedByCheat;
+      }
       if (saved.improvementId !== undefined) tile.improvementId = saved.improvementId;
       if (saved.improvementId !== undefined && saved.resourceOwnerNationId !== undefined) {
         tile.resourceOwnerNationId = saved.resourceOwnerNationId;

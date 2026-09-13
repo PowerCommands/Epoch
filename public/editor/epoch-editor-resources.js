@@ -105,7 +105,7 @@
     yieldBonus: { food: 0, production: 0, gold: 0 },
     buildTurns: 4,
     requiredBuilderCapability: "dig",
-    requiredCargoTransportUnitTypeId: "transport_ship",
+    requiresNavalTransport: true,
     spriteKey: "improvement_underwater_archaeological_site"
   };
   var NUCLEAR_PLANT_MAINTENANCE = {

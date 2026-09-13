@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { TileType, type MapData } from '../src/types/map.ts';
+import { buildTileInspection, type TileInspectionDeps } from '../src/systems/TileInspectionData.ts';
+import { SaveLoadService } from '../src/systems/SaveLoadService.ts';
 import { CheatSystem, type GameContext } from '../src/systems/CheatSystem.ts';
 
 interface CreatedUnit {
@@ -13,7 +16,11 @@ interface CreatedUnit {
 interface TileStub {
   x: number;
   y: number;
-  type: number;
+  type: number | TileType;
+  resourceRevealedByCheat?: boolean;
+  resourceOwnerNationId?: string;
+  cultureOwnerId?: string;
+  cultureSourceCityId?: string;
   resourceId?: string;
   ownerId?: string;
 }
@@ -104,26 +111,30 @@ test('tab completion offers unit types then nations', () => {
   assert.deepEqual(nationSuggestions, ['france']);
 });
 
-test('resource <id> <nation> places the resource, assigns the tile, and invalidates the index', () => {
+test('resource places and reveals the resource without claiming an unowned tile', () => {
   // England has researched the horses-enabling tech, so no missing-tech note.
   const h = makeCheats(TILE, { researched: new Set(['animal_husbandry']) });
   const message = h.cheats.execute('resource horses');
-  assert.match(message, /Placed Horses on the selected tile for England/);
+  assert.match(message, /Placed Horses on the selected tile. Ownership unchanged/);
   assert.doesNotMatch(message, /needs .* to access/);
   assert.equal(h.tiles[4][3].resourceId, 'horses');
-  assert.equal(h.tiles[4][3].ownerId, 'england');
+  assert.equal(h.tiles[4][3].ownerId, undefined);
+  assert.equal(h.tiles[4][3].resourceRevealedByCheat, true);
   assert.equal(h.getInvalidateCount(), 1);
   assert.deepEqual(h.refreshedTiles, [[3, 4]]);
 });
 
-test('resource assigns the tile to the named nation', () => {
+test('legacy nation argument preserves existing territorial and economic ownership', () => {
   const h = makeCheats(TILE, { researched: new Set(['animal_husbandry']) });
+  Object.assign(h.tiles[4][3], { ownerId: 'england', resourceOwnerNationId: 'england', cultureOwnerId: 'france', cultureSourceCityId: 'city-1' });
+  const before = { ...h.tiles[4][3] };
   h.cheats.execute('resource horses france');
-  assert.equal(h.tiles[4][3].ownerId, 'france');
+  assert.deepEqual(h.tiles[4][3], { ...before, resourceId: 'horses', resourceRevealedByCheat: true });
 });
 
 test('resource notes when the owner lacks the required technology', () => {
   const h = makeCheats(TILE); // nothing researched
+  h.tiles[4][3].ownerId = 'france';
   const message = h.cheats.execute('resource horses');
   assert.match(message, /needs .* to access it; the tile yield applies regardless/);
   // The resource is still placed regardless of tech.
@@ -142,11 +153,51 @@ test('unknown resource reports an error and mutates nothing', () => {
   assert.equal(h.tiles[4][3].resourceId, undefined);
 });
 
-test('resource tab completion offers resources then nations', () => {
+test('resource tab completion offers resources without suggesting ownership changes', () => {
   const { cheats } = makeCheats(TILE);
   const resourceSuggestions = cheats.getCompletions('resource hor').map((s) => s.value);
   assert.ok(resourceSuggestions.includes('horses'));
 
   const nationSuggestions = cheats.getCompletions('resource horses fra').map((s) => s.value);
-  assert.deepEqual(nationSuggestions, ['france']);
+  assert.deepEqual(nationSuggestions, []);
+});
+
+for (const ownerId of [undefined, 'england', 'france']) {
+  test(`shipwreck cheat preserves ${ownerId ?? 'unowned'} ocean territory and survives saving`, () => {
+    const h = makeCheats(TILE);
+    const tile = h.tiles[4][3];
+    tile.type = TileType.Ocean;
+    tile.ownerId = ownerId;
+    const before = { ...tile };
+    assert.match(h.cheats.execute('resource Shipwreck'), /Placed Shipwreck/);
+    assert.deepEqual(tile, { ...before, resourceId: 'shipwreck', resourceRevealedByCheat: true });
+    const map = { width: 6, height: 6, tiles: h.tiles } as MapData;
+    const saved = SaveLoadService.serializeTiles(map);
+    tile.resourceId = undefined;
+    tile.resourceRevealedByCheat = undefined;
+    SaveLoadService.restoreTiles(saved, map);
+    assert.equal(tile.resourceId, 'shipwreck');
+    assert.equal(tile.resourceRevealedByCheat, true);
+    assert.equal(tile.ownerId, ownerId);
+    SaveLoadService.restoreTiles(saved.map(({ resourceRevealedByCheat, ...old }) => old), map);
+    assert.equal(tile.resourceRevealedByCheat, undefined);
+  });
+}
+
+test('inspection shows cheated shipwreck before discovery without an orphaned claim', () => {
+  const h = makeCheats(TILE);
+  h.tiles[4][3].type = TileType.Ocean;
+  h.cheats.execute('resource shipwreck');
+  const deps = {
+    mapData: { tiles: h.tiles },
+    cityManager: { getAllCities: () => [], getCityAt: () => undefined },
+    unitManager: { getUnitsAt: () => [] },
+    nationManager: { getNation: () => undefined },
+    isResourceVisible: () => false,
+  } as unknown as TileInspectionDeps;
+  const info = buildTileInspection({ x: 3, y: 4 }, deps)!;
+  assert.ok(info.sections[0].rows.some(row => row.label === 'Resource' && row.value === 'Shipwreck'));
+  assert.deepEqual(info.sections[1].rows, [{ label: 'Owner', value: 'Unclaimed' }]);
+  h.tiles[4][3].resourceRevealedByCheat = undefined;
+  assert.ok(buildTileInspection({ x: 3, y: 4 }, deps)!.sections[0].rows.every(row => row.label !== 'Resource'));
 });

@@ -5,7 +5,7 @@ import test from 'node:test';
 import { MUSEUM } from '../src/data/buildings.ts';
 import { UNDERWATER_ARCHAEOLOGICAL_SITE } from '../src/data/improvements.ts';
 import { getNaturalResourceById } from '../src/data/naturalResources.ts';
-import { ARCHAEOLOGIST, CARGO_SHIP, TRANSPORT_SHIP, WORK_BOAT } from '../src/data/units.ts';
+import { ALL_UNIT_TYPES, canCarryUnitType, ARCHAEOLOGIST, CARGO_SHIP, TRANSPORT_SHIP, WORK_BOAT } from '../src/data/units.ts';
 import { City } from '../src/entities/City.ts';
 import { Nation } from '../src/entities/Nation.ts';
 import { Unit } from '../src/entities/Unit.ts';
@@ -17,6 +17,8 @@ import { NationManager } from '../src/systems/NationManager.ts';
 import { ResearchSystem } from '../src/systems/ResearchSystem.ts';
 import { SaveLoadService } from '../src/systems/SaveLoadService.ts';
 import { TurnManager } from '../src/systems/TurnManager.ts';
+import { UnitBoardingManager } from '../src/systems/UnitBoardingManager.ts';
+import { canEmbark, isEmbarked } from '../src/systems/UnitMovementRules.ts';
 import { UnitManager } from '../src/systems/UnitManager.ts';
 import { HexGridSystem } from '../src/systems/grid/HexGridSystem.ts';
 import { UnitActionToolbox } from '../src/ui/UnitActionToolbox.ts';
@@ -102,12 +104,12 @@ test('Shipwreck is water-only and requires its dedicated four-turn improvement',
   assert.equal(TRANSPORT_SHIP.cargoCapacity, 3, 'archaeology does not change normal cargo capacity');
 });
 
-test('only a real Transport Ship carrying an Archaeologist can start Shipwreck Dig', () => {
+test('only a compatible naval transport carrying an Archaeologist can start Shipwreck Dig', () => {
   const noCargo = createHarness();
   assert.equal(noCargo.builder.getCurrentTileBuildPreview(noCargo.transport).canBuild, false);
 
-  const wrongCarrier = createHarness({ carrierType: CARGO_SHIP, archaeologistCount: 1 });
-  assert.equal(wrongCarrier.builder.getCurrentTileBuildPreview(wrongCarrier.transport).canBuild, false);
+  const cargoShip = createHarness({ carrierType: CARGO_SHIP, archaeologistCount: 1 });
+  assert.equal(cargoShip.builder.getCurrentTileBuildPreview(cargoShip.transport).canBuild, true);
 
   const embarked = createHarness();
   const independentArchaeologist = new Unit({
@@ -209,12 +211,14 @@ test('tile save/load preserves cargo excavation progress and completion data', (
   assert.equal(completed.tile.improvementId, UNDERWATER_ARCHAEOLOGICAL_SITE.id);
 });
 
-test('Transport Ship exposes Dig only for a valid expedition and uses the shared action', () => {
+test('transport exposes a disabled Dig explaining missing cargo and enables it for an expedition', () => {
   const invalid = createHarness();
   const invalidToolbox = new UnitActionToolbox(OWNER);
   invalidToolbox.setBuildAvailabilityProvider(invalid.builder);
   invalidToolbox.setSelectedUnit(invalid.transport);
-  assert.equal(invalidToolbox.getHudActions().some((action) => action.mode === 'dig'), false);
+  const lockedDig = invalidToolbox.getHudActions().find(action => action.mode === 'dig');
+  assert.equal(lockedDig?.isAvailable, false);
+  assert.match(lockedDig?.tooltip ?? '', /Archaeologist aboard/);
 
   const valid = createHarness({ archaeologistCount: 1 });
   const toolbox = new UnitActionToolbox(OWNER);
@@ -251,3 +255,73 @@ test('Underwater Archaeological Site uses the normal transparent improvement ass
   assert.equal(UNDERWATER_ARCHAEOLOGICAL_SITE.spriteKey, 'improvement_underwater_archaeological_site');
   assert.equal(existsSync('public/assets/sprites/improvements/underwater_archaeological_site.png'), true);
 });
+
+for (const carrierType of ALL_UNIT_TYPES.filter(type => type.isNaval && canCarryUnitType(type, ARCHAEOLOGIST))) {
+  test(`${carrierType.name} supports human Dig from preview through completion`, () => {
+    const h = createHarness({ carrierType, archaeologistCount: 1 });
+    h.tile.ownerId = undefined;
+    const toolbox = new UnitActionToolbox(OWNER);
+    toolbox.setBuildAvailabilityProvider(h.builder);
+    toolbox.setSelectedUnit(h.transport);
+    assert.ok(toolbox.getHudActions().some(action => action.mode === 'dig' && action.isAvailable));
+    assert.ok(h.builder.build(h.transport, h.tile));
+    for (let round = 1; round <= 4; round++) h.construction.handleTurnStart({ round, nation: h.nation });
+    assert.equal(h.tile.improvementId, UNDERWATER_ARCHAEOLOGICAL_SITE.id);
+    assert.equal(h.tile.ownerId, undefined);
+    assert.equal(h.archaeologists[0].carriedByUnitId, h.transport.id);
+  });
+}
+
+test('Dig remains visible with explanations for research, movement and exhausted cargo', () => {
+  for (const problem of ['research', 'movement', 'charges']) {
+    const h = createHarness({ archaeologistCount: 1, researched: problem !== 'research' });
+    if (problem === 'movement') h.transport.movementPoints = 0;
+    if (problem === 'charges') h.archaeologists[0].improvementCharges = 0;
+    const toolbox = new UnitActionToolbox(OWNER);
+    toolbox.setBuildAvailabilityProvider(h.builder);
+    toolbox.setSelectedUnit(h.transport);
+    const dig = toolbox.getHudActions().find(action => action.mode === 'dig');
+    assert.equal(dig?.isAvailable, false);
+    assert.ok(dig?.tooltip);
+  }
+});
+
+test('cheated Shipwreck discovery permits Dig but still requires archaeology research', () => {
+  const h = createHarness({ archaeologistCount: 1, known: false });
+  h.tile.resourceRevealedByCheat = true;
+  assert.ok(h.builder.build(h.transport, h.tile));
+  const locked = createHarness({ archaeologistCount: 1, known: false, researched: false });
+  locked.tile.resourceRevealedByCheat = true;
+  assert.equal(locked.builder.build(locked.transport, locked.tile), null);
+});
+
+test('selecting a second archaeologist uses that passenger, while transport skips exhausted cargo', () => {
+  const h = createHarness({ archaeologistCount: 2 });
+  assert.equal(h.builder.getCurrentTileBuildPreview(h.archaeologists[1]).builderUnitId, h.archaeologists[1].id);
+  h.archaeologists[0].improvementCharges = 0;
+  assert.equal(h.builder.getCurrentTileBuildPreview(h.transport).builderUnitId, h.archaeologists[1].id);
+});
+
+for (const water of [TileType.Coast, TileType.Ocean]) {
+  test(`industrial cargo must land on land, never ${water}`, () => {
+    const h = createHarness({ archaeologistCount: 1 });
+    h.nation.researchedTechIds.push('industrialization');
+    const passenger = h.archaeologists[0];
+    const boarding = new UnitBoardingManager(h.units, h.mapData, new HexGridSystem(), h.nations);
+    h.mapData.tiles[0][2].type = water;
+    assert.equal(canEmbark(passenger, h.nation), true);
+    assert.equal(isEmbarked(passenger, h.mapData), false, 'cargo is not an independent embarked unit');
+    assert.equal(boarding.canUnboard(passenger, 2, 0), false);
+    assert.equal(boarding.unboard(passenger, 2, 0), false);
+    assert.equal(passenger.carriedByUnitId, h.transport.id);
+    assert.ok(h.transport.cargoUnitIds.includes(passenger.id));
+    assert.match(boarding.getUnboardingFailureReason(passenger, 2, 0) ?? '', /land/);
+    assert.equal(boarding.unboard(passenger, 1, 1), true);
+    assert.equal(passenger.carriedByUnitId, undefined);
+    assert.equal(isEmbarked(passenger, h.mapData), false);
+    h.units.moveUnit(passenger.id, 2, 0);
+    assert.equal(isEmbarked(passenger, h.mapData), true);
+    h.units.moveUnit(passenger.id, 1, 1);
+    assert.equal(isEmbarked(passenger, h.mapData), false);
+  });
+}

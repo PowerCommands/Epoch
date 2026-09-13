@@ -17,7 +17,7 @@ export function canNationEmbarkLandUnits(nation: Nation | undefined): boolean {
 }
 
 export function isEmbarked(unit: Unit, mapData: MapData): boolean {
-  if (unit.unitType.isNaval === true || (unit.unitType.category === 'air' && unit.unitType.canTraverseWater)) return false;
+  if (unit.carriedByUnitId !== undefined || unit.unitType.isNaval === true || unit.unitType.category === 'air') return false;
   const tile = mapData.tiles[unit.tileY]?.[unit.tileX];
   return tile !== undefined && isWaterTile(tile);
 }

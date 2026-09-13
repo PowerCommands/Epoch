@@ -2708,7 +2708,7 @@ export class GameScene extends Phaser.Scene {
       const tile = mapData.tiles[tileY]?.[tileX];
       const resourceId = tile?.resourceId;
       if (!resourceId) return false;
-      if (!isNaturalResourceVisibleToHuman(resourceId)) return false;
+      if (!tile.resourceRevealedByCheat && !isNaturalResourceVisibleToHuman(resourceId)) return false;
       if (isMapRevealActive) return true;
       if (mapLensMode === 'resources') {
         if (tile.improvementId) return false;
@@ -3397,7 +3397,11 @@ export class GameScene extends Phaser.Scene {
         consumeMovement: true,
         requireMovement: true,
       });
-      if (!result) return false;
+      if (!result) {
+        const preview = builderSystem.getCurrentTileBuildPreview(unit);
+        logManager.info({ nationId: unit.ownerId, category: 'improvement', message: preview.reason ?? 'Cannot improve this tile.' });
+        return false;
+      }
       unit.queuedDestination = undefined;
 
       const locationLabel = result.city ? `near ${result.city.name}` : 'on a sea resource';
@@ -3726,7 +3730,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      return { cargo: cargoUnits[0], reason: 'No adjacent valid tile to debark.' };
+      return { cargo: cargoUnits[0], reason: 'No adjacent land tile available to debark.' };
     };
     unitActionToolbox.setDebarkAvailabilityProvider({
       getDebarkPreview: (unit) => {

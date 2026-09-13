@@ -4806,9 +4806,9 @@ export class AISystem {
     const improvement = getImprovementForTile(tile);
     const improvementId = improvement?.id;
     if (improvementId === undefined) return false;
-    // Land archaeology is the Dig that does NOT require a Transport Ship cargo.
+    // Land archaeology does not require a naval carrier.
     if (improvement === undefined || improvement.requiredBuilderCapability !== 'dig') return false;
-    if (improvement.requiredCargoTransportUnitTypeId !== undefined) return false;
+    if (improvement.requiresNavalTransport === true) return false;
     if (!this.isArchaeologicalResourceKnownToNation(nationId, tile.resourceId)) return false;
     if (!this.researchSystem?.isImprovementUnlocked(nationId, improvementId)) return false;
     if (tile.ownerId === nationId) return true;
@@ -5023,8 +5023,8 @@ export class AISystem {
     const improvementId = improvement?.id;
     if (improvementId === undefined) return false;
     // Shipwreck is the underwater Dig that requires an Archaeologist cargo aboard a
-    // Transport Ship — the same mandatory rule the human player is held to.
-    if (improvement === undefined || improvement.requiredCargoTransportUnitTypeId === undefined) return false;
+    // compatible naval transport — the same mandatory rule as for the human player.
+    if (improvement === undefined || improvement.requiresNavalTransport !== true) return false;
     if (!this.isArchaeologicalResourceKnownToNation(nationId, tile.resourceId)) return false;
     if (!this.researchSystem?.isImprovementUnlocked(nationId, improvementId)) return false;
     const ownerNationId = tile.resourceOwnerNationId ?? tile.ownerId;
@@ -5139,10 +5139,10 @@ export class AISystem {
     }
   }
 
-  /** A Transport Ship owned by the nation that is carrying an Archaeologist. */
+  /** A compatible naval transport owned by the nation, carrying an Archaeologist. */
   private findLoadedShipwreckPair(nationId: string): { transport: Unit; archaeologist: Unit } | undefined {
     for (const transport of this.unitManager.getUnitsByOwner(nationId)) {
-      if (transport.unitType.id !== TRANSPORT_SHIP.id || this.isCargoUnit(transport)) continue;
+      if (!transport.unitType.isNaval || !canCarryUnitType(transport.unitType, ARCHAEOLOGIST) || this.isCargoUnit(transport)) continue;
       if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(transport.id) === true) continue;
       const archaeologist = this.unitManager.getCargoUnitsForTransport(transport)
         .find((cargo) => cargo.unitType.id === ARCHAEOLOGIST.id);
@@ -5185,7 +5185,7 @@ export class AISystem {
   private pickFreeTransportForShipwreck(nationId: string): Unit | undefined {
     return this.unitManager.getUnitsByOwner(nationId)
       .filter((unit) => (
-        unit.unitType.id === TRANSPORT_SHIP.id
+        unit.unitType.isNaval === true && canCarryUnitType(unit.unitType, ARCHAEOLOGIST)
         && !this.isCargoUnit(unit)
         && this.unitManager.getCargoUnitsForTransport(unit).length === 0
         && this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) !== true

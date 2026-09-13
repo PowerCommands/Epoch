@@ -13,10 +13,10 @@ export interface TileImprovementDefinition {
   /** Capability required instead of the ordinary Worker build capability. */
   requiredBuilderCapability?: string;
   /**
-   * When set, the capable builder must be cargo aboard this unit type. The
+   * When set, the capable builder must be cargo aboard a compatible naval transport. The
    * carrier is the unit that supplies movement and remains on the target tile.
    */
-  requiredCargoTransportUnitTypeId?: string;
+  requiresNavalTransport?: boolean;
   /** Optional map sprite loaded from assets/sprites/improvements/{id}.png. */
   spriteKey?: string;
 }
@@ -109,7 +109,7 @@ export const UNDERWATER_ARCHAEOLOGICAL_SITE: TileImprovementDefinition = {
   yieldBonus: { food: 0, production: 0, gold: 0 },
   buildTurns: 4,
   requiredBuilderCapability: 'dig',
-  requiredCargoTransportUnitTypeId: 'transport_ship',
+  requiresNavalTransport: true,
   spriteKey: 'improvement_underwater_archaeological_site',
 };
 

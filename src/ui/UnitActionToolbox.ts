@@ -513,13 +513,15 @@ export class UnitActionToolbox {
     }
     if (action.mode === 'debark') {
       return debarkPreview?.canDebark
-        ? 'Unload cargo to an adjacent valid tile.'
+        ? 'Unload cargo to an adjacent land tile.'
         : debarkPreview?.reason ?? 'Cannot debark cargo here.';
     }
     if (action.mode !== 'build' && action.mode !== 'dig') return undefined;
     const improvement = buildPreview?.improvement;
     if (buildPreview?.canBuild) {
-      return action.mode === 'dig' ? 'Excavate this archaeological site.' : `Build ${improvement?.name ?? 'improvement'}`;
+      return action.mode === 'dig' ? (buildPreview.transportUnitId
+        ? 'Excavate this shipwreck with the Archaeologist aboard. Keep the ship over the wreck until work finishes.'
+        : 'Excavate this archaeological site.') : `Build ${improvement?.name ?? 'improvement'}`;
     }
     return buildPreview?.reason ?? 'Cannot build improvement';
   }

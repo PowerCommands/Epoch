@@ -203,7 +203,7 @@ export const UNIT_AMBIENT: Record<string, AmbientProfile> = {
   settler:{effects:[],joints:[j(.61,.45,.07,.005,.003)],note:'Hand at belt, fixed pack and legs.'},
   archaeologist:{effects:[],joints:[j(.71,.6,.065,.006,.002)],note:'Gloved hand, fixed hat and grounded boots.'},
   horseman:{effects:[],gait:RIDING_GAIT,note:'Classic painted chestnut horse, steel armor and brown tack in natural light; continuous trot with no brightness filter.'},
-  knight:{effects:[],gait:RIDING_GAIT,brightness:3.2,note:'Same bright mounted artwork and coordinated trot as horseman.'},
+  knight:{effects:[],gait:RIDING_GAIT,note:'Polished medieval plate armor on a riding knight; natural highlights and coordinated trot.'},
   cavalry:{effects:[],joints:[j(.71,.46,.10,.009,.013)],note:'Right-facing horse head; reins and rider remain coherent.'},
   caravan:{effects:[],joints:[j(.20,.58,.09,.009,.01)],note:'Left ox muzzle; wagon, wheels and cargo stay rigid.'},
   tank:p(e('smoke',.71,.62,.25,0xb2ada0,17)),
@@ -245,6 +245,7 @@ UNIT_AMBIENT.scout_boat = {
 };
 units('worker_action worker_action_improvement workboat_action work_boat_action_improvement',{
   effects:[],note:'These files depict construction signs, not workers/boats. Keep the sign stationary.'});
+UNIT_AMBIENT.embarked_boat = {effects:[e('water',.5,.68,.7)],float:.026,note:'Small side-profile launch with pronounced rigid hull bobbing for embarked land units.'};
 units('agent spy atomic_bomb guided_missile nuclear_missile leaders', {effects: [], note: 'Covert portraits, stored ordnance and UI symbol remain still.'});
 
 Object.assign(UNIT_AMBIENT, FOOT_SOLDIER_PROFILES);

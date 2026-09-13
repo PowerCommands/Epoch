@@ -85,6 +85,7 @@ export class UnitBoardingManager {
     if (!transport) return 'transport is missing';
     const targetTile = this.getTile(targetX, targetY);
     if (!targetTile) return 'target tile is invalid';
+    if (isWaterTile(targetTile)) return 'cargo must debark onto land';
     if (!this.gridSystem.isAdjacent({ x: transport.tileX, y: transport.tileY }, { x: targetX, y: targetY })) {
       return 'target tile is not adjacent to transport';
     }

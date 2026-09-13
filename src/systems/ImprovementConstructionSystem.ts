@@ -1,3 +1,4 @@
+import { canCarryUnitType } from '../data/units';
 import { MAINTAIN_NUCLEAR_PLANT } from '../data/nuclearPlants';
 import type { PowerPlantSystem } from './PowerPlantSystem';
 import { cleanNuclearWaste } from './StrategicWeaponsSystem';
@@ -183,13 +184,14 @@ export class ImprovementConstructionSystem {
     if (improvement === undefined) return 'missingImprovement';
     if (!canUnitConstructImprovement(unit.unitType, improvement)) return 'invalidUnit';
     if (!improvement.allowedTileTypes.includes(tile.type)) return 'invalidTile';
-    const requiredTransportTypeId = improvement.requiredCargoTransportUnitTypeId;
+    const requiresTransport = improvement.requiresNavalTransport === true;
     let transport: Unit | undefined;
-    if (requiredTransportTypeId !== undefined) {
+    if (requiresTransport) {
       if (construction.transportUnitId === undefined) return 'invalidUnit';
       transport = this.unitManager.getUnit(construction.transportUnitId);
       if (transport === undefined
-        || transport.unitType.id !== requiredTransportTypeId
+        || !transport.unitType.isNaval
+        || !canCarryUnitType(transport.unitType, unit.unitType)
         || transport.ownerId !== construction.ownerId
         || transport.tileX !== tile.x
         || transport.tileY !== tile.y
@@ -198,7 +200,7 @@ export class ImprovementConstructionSystem {
     } else if (construction.transportUnitId !== undefined) {
       return 'invalidUnit';
     }
-    if (requiredTransportTypeId !== undefined
+    if (requiresTransport
       && !this.isCanonicalResourceImprovement(tile, construction.improvementId)) return 'invalidTile';
     if (construction.resourceOwnerNationId !== undefined) {
       if (!this.isValidSeaResourceClaim(tile, construction, unit, transport)) return 'invalidTile';

@@ -12,6 +12,7 @@ function makeHarness(options: { cityCenter?: boolean } = {}) {
     ownerId: 'mongolia',
     resourceOwnerNationId: 'mongolia',
     resourceId: 'horses',
+    resourceRevealedByCheat: true,
     improvementId: 'pasture',
     improvementOwnerId: 'mongolia',
     improvementConstruction: {
@@ -84,6 +85,7 @@ test('tile clear removes tile state and city references but leaves terrain alone
   assert.equal(h.tile.type, TileType.Plains);
   assert.equal(h.tile.ownerId, undefined);
   assert.equal(h.tile.resourceId, undefined);
+  assert.equal(h.tile.resourceRevealedByCheat, undefined);
   assert.equal(h.tile.improvementId, undefined);
   assert.equal(h.tile.improvementConstruction, undefined);
   assert.equal(h.tile.buildingId, undefined);

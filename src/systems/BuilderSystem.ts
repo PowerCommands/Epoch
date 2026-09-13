@@ -1,3 +1,4 @@
+import { ARCHAEOLOGIST, canCarryUnitType } from '../data/units';
 import { MAINTAIN_NUCLEAR_PLANT } from '../data/nuclearPlants';
 import type { PowerPlantSystem } from './PowerPlantSystem';
 import type { Unit } from '../entities/Unit';
@@ -196,15 +197,32 @@ export class BuilderSystem {
     return { unit: builderUnit, tile, improvement: preview.improvement, city: city ?? undefined, requiredTurns };
   }
 
-  private evaluateBuild(
+  private evaluateBuild(unit: Unit, tile: Tile, options: BuildImprovementOptions = {}): BuildImprovementPreview {
+    const preview = this.evaluateBuildRequirements(unit, tile, options);
+    const improvement = getImprovementForTile(tile);
+    // Retain cargo-Dig metadata when movement, research, or cargo is missing,
+    // so the transport's disabled action can explain the requirement.
+    if (!preview.canBuild && improvement?.requiresNavalTransport
+      && tile.improvementId === undefined
+      && unit.unitType.isNaval && canCarryUnitType(unit.unitType, ARCHAEOLOGIST)
+      && tile.resourceId && (tile.resourceRevealedByCheat || this.isResourceVisibleToNation(unit.ownerId, tile.resourceId))) {
+      return { ...preview, improvement, improvementId: improvement.id, transportUnitId: unit.id };
+    }
+    return preview;
+  }
+
+  private evaluateBuildRequirements(
     unit: Unit,
     tile: Tile,
     options: BuildImprovementOptions = {},
   ): BuildImprovementPreview {
     const resourceImprovement = getImprovementForTile(tile);
-    const cargoContext = resourceImprovement?.requiredCargoTransportUnitTypeId !== undefined
+    const cargoContext = resourceImprovement?.requiresNavalTransport === true
       ? this.getCargoBuildContext(unit, resourceImprovement)
       : undefined;
+    if (resourceImprovement?.requiresNavalTransport && cargoContext === undefined) {
+      return { canBuild: false, reason: 'Requires an Archaeologist aboard a compatible transport ship' };
+    }
     const builderUnit = cargoContext?.builder ?? unit;
     const movementUnit = cargoContext?.transport ?? unit;
     if (!isImprovementBuilderUnitType(builderUnit.unitType)) return { canBuild: false, reason: 'Unit cannot improve tiles' };
@@ -246,12 +264,8 @@ export class BuilderSystem {
     }
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'City tile cannot be improved' };
     if (!canUnitEnterTile(movementUnit, tile)) return { canBuild: false, reason: 'Invalid terrain for this unit' };
-    if (tile.resourceId !== undefined && !this.isResourceVisibleToNation(builderUnit.ownerId, tile.resourceId)) {
+    if (tile.resourceId !== undefined && !tile.resourceRevealedByCheat && !this.isResourceVisibleToNation(builderUnit.ownerId, tile.resourceId)) {
       return { canBuild: false, reason: 'Resource is not known to this nation' };
-    }
-
-    if (resourceImprovement?.requiredCargoTransportUnitTypeId !== undefined && cargoContext === undefined) {
-      return { canBuild: false, reason: 'Archaeologist must be cargo aboard a Transport Ship' };
     }
 
     if (movementUnit.unitType.isNaval === true) {
@@ -353,21 +367,22 @@ export class BuilderSystem {
   }
 
   private getCargoBuildContext(unit: Unit, improvement: TileImprovementDefinition): CargoBuildContext | undefined {
-    const requiredTransportId = improvement.requiredCargoTransportUnitTypeId;
-    if (requiredTransportId === undefined) return undefined;
+    if (!improvement.requiresNavalTransport) return undefined;
 
-    const transport = unit.unitType.id === requiredTransportId
+    const transport = unit.unitType.isNaval === true
       ? unit
       : this.unitManager.getTransportForUnit(unit);
-    if (transport?.unitType.id !== requiredTransportId || transport.ownerId !== unit.ownerId) return undefined;
+    if (!transport?.unitType.isNaval || transport.carriedByUnitId || transport.ownerId !== unit.ownerId) return undefined;
 
     const cargo = this.unitManager.getCargoUnitsForTransport(transport)
       .filter((candidate) => (
         candidate.ownerId === transport.ownerId
+        && canCarryUnitType(transport.unitType, candidate.unitType)
         && canUnitConstructImprovement(candidate.unitType, improvement)
+        && (candidate.improvementCharges === undefined || candidate.improvementCharges > 0)
       ))
       .sort((a, b) => a.id.localeCompare(b.id));
-    const builder = cargo[0];
+    const builder = unit.id === transport.id ? cargo[0] : cargo.find(candidate => candidate.id === unit.id);
     if (builder === undefined) return undefined;
     if (unit.id !== transport.id && unit.id !== builder.id) return undefined;
     return { builder, transport };

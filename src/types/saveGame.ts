@@ -221,6 +221,8 @@ export interface SavedTile {
   ownerId?: string;
   resourceOwnerNationId?: string;
   resourceId?: string;
+  /** Developer-placed resource bypasses discovery gates, but never fog or ownership. */
+  resourceRevealedByCheat?: boolean;
   improvementId?: string;
   /** Optional for saves created before improvements had explicit economic ownership. */
   improvementOwnerId?: string;

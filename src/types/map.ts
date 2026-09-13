@@ -46,6 +46,8 @@ export interface Tile {
   /** Reciprocal river edge links: E, SE, SW, W, NW, NE (bits 0–5). Geography only. */
   riverConnections?: number;
   resourceId?: string; // optional natural resource; undefined = none
+  /** Developer-placed resource bypasses discovery gates, but never fog or ownership. */
+  resourceRevealedByCheat?: boolean;
   improvementId?: string; // optional tile improvement; undefined = none
   /** Economic owner of the completed improvement; independent of territorial ownerId. */
   improvementOwnerId?: string;
