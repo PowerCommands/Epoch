@@ -1,3 +1,5 @@
+import type { Era } from '../data/technologies';
+
 export const WORLD_COUNCIL_CONSTRUCTION_TURNS = 20;
 export const WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD = 5000;
 export const WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS = 50;
@@ -69,6 +71,7 @@ export interface WorldCouncilContributionChoice {
 }
 
 export type WorldCouncilResolutionId =
+  | 'international_wildlife_protection'
   | 'collective_nuclear_response'
   | 'defense_support'
   | 'global_free_trade_agreement'
@@ -89,6 +92,8 @@ export type WorldCouncilResolutionId =
 export type WorldCouncilResolutionVotingType = 'none' | 'optionalParticipation' | 'influence' | 'special';
 
 export interface WorldCouncilResolutionDefinition {
+  readonly minimumEra?: Era;
+  readonly protectedResourceIds?: readonly string[];
   readonly id: WorldCouncilResolutionId;
   readonly title: string;
   readonly description: string;

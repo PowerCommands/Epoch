@@ -1,10 +1,28 @@
 const AUTOFOCUS_ON_END_TURN_KEY = 'epoch.autofocusOnEndTurn';
 const AUTO_END_TURN_KEY = 'epoch.autoEndTurn';
 const DEFAULT_CAMERA_ZOOM_KEY = 'epoch.defaultCameraZoom';
+const MAP_ANIMATIONS_KEY = 'epoch.mapAnimations';
 
 export const DEFAULT_CAMERA_ZOOM = 1.5;
 export const MIN_DEFAULT_CAMERA_ZOOM = 1;
 export const MAX_DEFAULT_CAMERA_ZOOM = 2;
+
+/** Ambient map motion is enabled by default, independently of autoplay. */
+export function isMapAnimationsEnabled(): boolean {
+  try {
+    return localStorage.getItem(MAP_ANIMATIONS_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function setMapAnimationsEnabled(value: boolean): void {
+  try {
+    localStorage.setItem(MAP_ANIMATIONS_KEY, String(value));
+  } catch {
+    // Ignore storage errors, as with the other player preferences.
+  }
+}
 
 /**
  * Persistent, cross-game player preferences shown in the Settings dialog.

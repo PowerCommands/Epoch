@@ -140,6 +140,52 @@ export function getImprovementById(id: string): TileImprovementDefinition | unde
   return ALL_IMPROVEMENTS.find((improvement) => improvement.id === id);
 }
 
+/**
+ * Technology-driven yield bonuses layered on top of an improvement's base yield.
+ * Applied per worked tile when the owning nation has researched the technology,
+ * so the bonus scales with how many matching improvements a city works.
+ */
+export interface ImprovementYieldTechBonus {
+  readonly technologyId: string;
+  readonly improvementIds: readonly string[];
+  readonly yieldDelta: TileYield;
+}
+
+export const IMPROVEMENT_YIELD_TECH_BONUSES: readonly ImprovementYieldTechBonus[] = [
+  {
+    technologyId: 'fertilizer',
+    improvementIds: [FARM.id, PLANTATION.id, PASTURE.id],
+    yieldDelta: { food: 1, production: 0, gold: 0 },
+  },
+];
+
+/** Predicate answering whether a nation has researched a given technology. */
+export type TechAvailability = (technologyId: string) => boolean;
+
+/** No technologies researched — yields fall back to their base values. */
+export const NO_TECH_AVAILABILITY: TechAvailability = () => false;
+
+/**
+ * Sum of all technology-driven yield deltas that apply to an improvement given
+ * the nation's researched technologies. Returns a zero yield when none apply.
+ */
+export function getImprovementTechYieldDelta(
+  improvementId: string,
+  hasTech: TechAvailability,
+): TileYield {
+  let food = 0;
+  let production = 0;
+  let gold = 0;
+  for (const bonus of IMPROVEMENT_YIELD_TECH_BONUSES) {
+    if (!bonus.improvementIds.includes(improvementId)) continue;
+    if (!hasTech(bonus.technologyId)) continue;
+    food += bonus.yieldDelta.food;
+    production += bonus.yieldDelta.production;
+    gold += bonus.yieldDelta.gold;
+  }
+  return { food, production, gold };
+}
+
 /** Ordinary terrain defaults; resource mappings always take priority. */
 export const TERRAIN_DEFAULT_IMPROVEMENTS: Partial<Record<TileType, string>> = {
   [TileType.Plains]: FARM.id,

@@ -1,4 +1,4 @@
-export type ResourceAnimal = 'cattle' | 'deer' | 'crabs' | 'sheep' | 'horses';
+export type ResourceAnimal = 'cattle' | 'deer' | 'crabs' | 'sheep' | 'horses' | 'elephant';
 const TAU=Math.PI*2;
 const COW_LEGS=[[.43,.61,.82,0],[.50,.62,.91,Math.PI],[.70,.43,.61,Math.PI],[.78,.45,.66,0]];
 const SHEEP_CENTERS=[[.28,.20],[.73,.20],[.28,.52],[.73,.52],[.50,.82]];
@@ -11,7 +11,27 @@ function leg(u:number,v:number,x:number,rootY:number,pawY:number,width:number,ph
 export function resourceAnimalOffset(kind:ResourceAnimal,u:number,v:number,t:number,seed:number):[number,number] {
   const phase=t*TAU/1.6+seed*TAU;
   let dx=0,dy=0;
-  if(kind==='horses') {
+  if(kind==='elephant') {
+    const p=t*TAU/2.8+seed*TAU;
+    dy=.006*Math.cos(p*2);
+    // Follow the slanted legs from shoulder/hip to foot in the ivory artwork.
+    for(const [rx,ry,fx,fy,shift,width] of [
+      [.44,.51,.53,.81,Math.PI,.055], [.53,.51,.44,.92,0,.09],
+      [.72,.52,.72,.64,Math.PI/2,.05], [.81,.52,.82,.71,Math.PI*1.5,.065],
+    ]) {
+      const q=Math.max(0,Math.min(1,(v-ry)/(fy-ry)));
+      const d=Math.abs(u-(rx+(fx-rx)*q))/width;
+      const w=d<1?(1-d*d)**2*q:0;
+      dx+=.036*Math.sin(p+shift)*w;
+      dy-=.024*Math.max(0,Math.cos(p+shift))*w;
+    }
+    const trunk=Math.max(0,1-Math.hypot((u-.28)/.13,(v-.74)/.20));
+    dx+=.022*Math.sin(p+.5)*trunk;
+    const ear=Math.max(0,1-Math.hypot((u-.54)/.13,(v-.38)/.17));
+    dx+=.012*Math.sin(p-.7)*ear;
+    const tail=Math.max(0,1-Math.hypot((u-.90)/.06,(v-.44)/.15));
+    dx+=.018*Math.sin(p+1)*tail;
+  } else if(kind==='horses') {
     const p=t*TAU/.8+seed*TAU;
     // The four painted legs have different roots and hoof positions. Follow
     // each leg's slanted centerline so its motion does not pull the belly.

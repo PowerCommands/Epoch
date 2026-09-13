@@ -484,7 +484,7 @@ export class ResourceSystem {
       const maritimeBonus = maritimeFood.get(city.id) ?? 0;
       const productionBonus = manufacturedProduction.get(city.id) ?? 0;
       const economy = this.applyMaritimeFood(
-        calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+        calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers, this.getTechAvailability(city.ownerId)),
         maritimeBonus,
       );
       const policyEconomy = this.applyFlatProduction(
@@ -563,7 +563,7 @@ export class ResourceSystem {
                   this.applyPolicyEconomyModifiers(
                     city,
                     this.applyMaritimeFood(
-                      calculateCityEconomy(city, this.mapData, ctx.buildings, this.gridSystem, nationModifiers),
+                      calculateCityEconomy(city, this.mapData, ctx.buildings, this.gridSystem, nationModifiers, this.getTechAvailability(city.ownerId)),
                       ctx.maritimeBonus,
                     ),
                   ),
@@ -713,6 +713,16 @@ export class ResourceSystem {
       + this.historicalGold(nation.id, this.getManufacturedGoldPerTurn(nation.id));
   }
 
+  /**
+   * Technology-availability predicate for a city's owning nation, used so
+   * technology-driven tile-improvement yield bonuses (e.g. Fertilizer) are
+   * reflected in the authoritative economy.
+   */
+  private getTechAvailability(ownerId: string): (technologyId: string) => boolean {
+    const techs = this.nationManager.getNation(ownerId)?.researchedTechIds ?? [];
+    return (technologyId) => techs.includes(technologyId);
+  }
+
   private calculateEconomyForCity(
     city: City,
     nationModifiers: Readonly<ModifierSet>,
@@ -724,6 +734,7 @@ export class ResourceSystem {
       buildings,
       this.gridSystem,
       nationModifiers,
+      this.getTechAvailability(city.ownerId),
     );
   }
 

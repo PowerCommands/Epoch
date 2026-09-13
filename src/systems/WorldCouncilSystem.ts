@@ -139,6 +139,12 @@ export class WorldCouncilSystem {
     return this.state !== null;
   }
 
+  isResourceExploitationProhibited(resourceId: string): boolean {
+    return this.state?.enactedResolutions.some(resolution =>
+      isEnactedResolutionActive(resolution)
+      && this.resolutionSystem?.getDefinition(resolution.resolutionId)?.protectedResourceIds?.includes(resourceId)) ?? false;
+  }
+
   isActive(): boolean {
     return this.state?.status === 'active';
   }
@@ -1236,7 +1242,8 @@ export class WorldCouncilSystem {
     if (proposal.resolutionId === 'games_of_nations_hosting') score += 8;
     if (proposal.resolutionId === 'exclude_games_of_nations_participant') score += 6;
     if (proposal.resolutionId === 'international_development_fund') score += 6;
-    if (proposerNationId && ['climate_accord', 'nuclear_non_proliferation_treaty'].includes(proposal.resolutionId)) {
+    if (proposerNationId && (this.resolutionSystem?.getDefinition(proposal.resolutionId)?.protectedResourceIds
+      || ['climate_accord', 'nuclear_non_proliferation_treaty'].includes(proposal.resolutionId))) {
       score += this.resolutionSystem?.scorePolicySupport(proposerNationId, proposal.resolutionId) ?? 0;
     }
     return score;

@@ -546,11 +546,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Fertilizer',
     era: 'renaissance',
     cost: 1960,
-    description: 'Improves soil knowledge and large-scale food production. Supports the transition from traditional farms to industrial agriculture.',
+    description: 'Improves soil knowledge and large-scale food production. Grants +1 Food to every Farm, Plantation and Pasture.',
     prerequisites: ['chemistry'],
     leadsTo: ['dynamite'],
     unlocks: [],
-    // TODO: improves Farms, Plantations and Pastures.
   },
   {
     id: 'rifling',

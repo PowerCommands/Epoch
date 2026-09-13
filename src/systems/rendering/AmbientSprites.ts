@@ -5,6 +5,7 @@ import { CONSTRUCTION_AMBIENT } from './ConstructionVisual';
 import Phaser from 'phaser';
 import { renderCanvasWithGeometryClip } from './GeometryClip';
 import { AMBIENT_PROFILES, aircraftLaunchAge, ambientMotion, ambientSeed, type AmbientKind, type AmbientProfile, type Emitter } from './AmbientProfiles';
+import { isMapAnimationsEnabled } from '../PlayerSettings';
 import { burstAge, weaponPhase, WEAPON_PERIOD, WEAPON_RELEASE } from './FootSoldierProfiles';
 import { mountedOffset } from './MountedGait';
 import { FISH_SCHOOL_COUNT, fishSchoolPose } from './FishSchool';
@@ -132,7 +133,7 @@ export class AmbientSprites {
     if (this.meshCount>=MAX_MESHES) return;
     b.grid=this.scene.renderer.type===Phaser.WEBGL?GRID:4;
     if(b.profile?.gait || b.profile?.polarBearWalk) b.grid=32;
-    if(b.profile?.animal) b.grid=b.profile.animal==='horses'?32:b.profile.animal==='sheep'?24:16;
+    if(b.profile?.animal) b.grid=b.profile.animal==='horses'||b.profile.animal==='elephant'?32:b.profile.animal==='sheep'?24:16;
     if(b.profile?.cropWind) b.grid=16;
     // Rigid artwork needs only one base quad. Subdividing it wastes vertices
     // when many independently armed soldiers share the screen.
@@ -189,7 +190,7 @@ export class AmbientSprites {
     this.lastDraw=this.elapsed;
     for(const layer of this.layers.values()) layer.clear();
     const camera=this.scene.cameras.main, view=camera.worldView;
-    const detail=this.reducedMotion?.matches || !this.isEnabled() ? 0 : Phaser.Math.Clamp((camera.zoom-.45)/.7,0,1);
+    const detail=this.reducedMotion?.matches || !this.isEnabled() || !isMapAnimationsEnabled() ? 0 : Phaser.Math.Clamp((camera.zoom-.45)/.7,0,1);
     const t=this.elapsed/1000;
     for(const b of this.bindings) {
       b.drawing=false;
@@ -1014,6 +1015,20 @@ export class AmbientSprites {
         g.lineBetween(x,y,x+Math.sin(a/12+1)*s*.013,y-Math.cos(a/12+1)*s*.013);break;
       }
       case 'propeller': {
+        if(e.period) {
+          const a=t*Math.PI*2/e.period+seed*31;
+          // Project the blade circle into the upright engine face. A faint
+          // swept disc and trailing blades keep rotation readable at map scale.
+          g.fillStyle(0xd9c7a0,.13*detail).fillEllipse(x,y,size*.085,size*.17);
+          for(let trail=3;trail>=0;trail--) {
+            const angle=a-trail*.28;
+            const dx=Math.cos(angle)*size*.042,dy=Math.sin(angle)*size*.085;
+            g.lineStyle(Math.max(.8,size*.012),color??0xb99865,(trail===0?.95:.13)*detail);
+            g.lineBetween(x-dx,y-dy,x+dx,y+dy);
+          }
+          g.fillStyle(0xe3d3ae,detail).fillCircle(x,y,Math.max(.8,size*.009));
+          break;
+        }
         // A restrained translucent disc suggests a turning propeller/rotor;
         // parked airframes remain fixed, and jets never get piston effects.
         const a=t*17+seed*31;

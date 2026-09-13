@@ -1,0 +1,10 @@
+Image edits used the built-in imagegen tool. Final assets are `public/assets/sprites/units/great_war_bomber.png` and `public/assets/sprites/resources/ivory.png`, resized to the existing 256 × 256 sprite format with alpha preserved.
+
+Bomber prompt:
+> Use case: precise-object-edit. Edit target: supplied Epoch game sprite. Correct this WW1 twin-engine biplane bomber: restore BOTH full left and right wings, with two clearly separated stacked wing planes and connecting struts, symmetrical full spans on either side of fuselage in correct isometric perspective. Existing left wing is nearly missing/black; make it fully visible olive canvas matching right. Preserve airplane facing bottom-left, fuselage, British roundels, twin engines, painterly realistic strategy sprite style. Entire plane within square with small transparent margin. Transparent background, no airfield, no ground shadow. Both engine front circular hubs clearly visible. Remove stationary propeller blades (runtime animated blades will be overlaid), retain engine hubs. Single asset.
+
+Bomber transparency correction:
+> Use case: background-extraction. Remove the entire grey and white checkerboard background from this airplane, including between wings and struts. Output actual transparent alpha PNG, NOT a painted checkerboard. Preserve every airplane pixel, position, dimensions, composition, both wings and both bladeless engine hubs unchanged. No shadow or backdrop.
+
+Ivory prompt:
+> Use case: precise-object-edit. Edit target supplied isometric elephant game sprite. Replace ivory statue material with a LIVING African elephant: natural warm grey wrinkled skin, darker creases, expressive dark eyes, large soft ears, two prominent curved creamy ivory tusks, relaxed long trunk. Preserve EXACT pose, facing lower left, body and leg positions, framing and silhouette of reference for a runtime walking deformation. Painterly realistic strategy game art. Entire elephant visible in square image. Truly transparent background, no ground or cast shadow, no scenery, no text. Not a statue, not white skin.

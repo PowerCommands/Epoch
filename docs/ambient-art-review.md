@@ -9,7 +9,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | cattle | Continuous alternating hoof steps and a brass bell swinging from a leather strap at the neck. |
 | deer | Endless bounding loop with vertical hops and leg tuck; no net travel. |
 | horses | Continuous 0.8-second gallop in place: four phased legs gather and extend, body lifts, head nods and tail streams. |
-| ivory | Elephant trunk tip and ear movement, no deformation of feet or body. |
+| ivory | Living grey elephant with ivory tusks; continuous 2.8-second walk in place, alternating foot swings/lifts, body bob, trunk, ear and tail motion. |
 | sheep | Exactly five separate sheep walk back and forth in bounded patches, with alternating steps. |
 | crabs | Endless sideways scuttle with cycling leg and claw motion. |
 | fish | Eight small fish replace the single large fish, circling in elliptical lanes with varied size, speed and gentle swimming sway. Each faces its travel direction; overview and reduced motion show a static school. |
@@ -88,7 +88,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | mobile_sam | Small chassis signal; missiles and launcher fixed. |
 | giant_death_robot | Small face/sensor light on the fixed robot. |
 | fighter | Propeller disc at the single painted nose hub. |
-| great_war_bomber | Propeller activity at the visible engine hubs. |
+| great_war_bomber | Complete biplane wings on both sides; both engine hubs have visible rotating blades, trailing blur and swept discs in a continuous 0.48-second cycle. |
 | triplane | Propeller at frontal nose hub; all wings and struts fixed. |
 | bomber | Two visible near-side engine propellers; four-engine wing/body artwork fixed. |
 | jet_fighter | Twin blue-white afterburners with orange glow. Original wingtip missile cutouts launch in sequence with exhaust trails, leave empty rails, then visually rearm. Also animated on the airbase representative. |

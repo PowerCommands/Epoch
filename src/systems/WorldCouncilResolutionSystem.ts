@@ -1,3 +1,6 @@
+import type { Era } from '../data/technologies';
+import { compareEras } from './EraSystem';
+
 import type {
   WorldCouncilEnactedResolution,
   WorldCouncilMeeting,
@@ -26,6 +29,8 @@ export interface WorldCouncilResolutionContext {
 }
 
 export interface WorldCouncilResolutionRuntime {
+  readonly getWorldEra?: () => Era;
+  readonly getResourceEconomicInterest?: (nationId: string, resourceId: string) => number;
   readonly canAttack?: (nationAId: string, nationBId: string) => boolean;
   readonly getEnergyPosition?: (nationId: string) => { activeFossilPlants: number; activePlants: number };
   readonly getNuclearPosition?: (nationId: string) => { weapons: number; pursuing: boolean };
@@ -133,6 +138,8 @@ interface ResolutionExecutionContext extends WorldCouncilResolutionContext {
 }
 
 interface ResolutionDefinitionConfig {
+  readonly minimumEra?: Era;
+  readonly protectedResourceIds?: readonly string[];
   readonly id: WorldCouncilResolutionId;
   readonly title: string;
   readonly description: string;
@@ -175,6 +182,16 @@ export const GAMES_OF_NATIONS_PARTICIPATION_JUSTIFICATIONS = [
 ] as const;
 
 const RESOLUTIONS: readonly ResolutionDefinitionConfig[] = [
+  {
+    id: 'international_wildlife_protection',
+    title: 'International Wildlife Protection',
+    description: 'Prohibits commercial exploitation of Ivory, Whales and Polar Bears worldwide.',
+    icon: '🐘', votingType: 'influence', organizationKind: 'worldCouncil',
+    minimumEra: 'modern',
+    protectedResourceIds: ['ivory', 'whales', 'polar_bear'],
+    supportsRepeal: true,
+    execute: () => {}, // Ongoing restrictions read the enacted resolution state.
+  },
   {
     id: 'collective_nuclear_response', title: 'Collective Military Response to Nuclear Attack',
     description: 'One nation, one decision. A majority authorizes intervention; only supporters join the victim’s war. The aggressor cannot vote. No Influence is spent.',
@@ -422,6 +439,8 @@ export class WorldCouncilResolutionSystem {
   }
 
   isProposalEligible(id: WorldCouncilResolutionId, proposerNationId?: string): boolean {
+    const minimumEra = this.definitions.get(id)?.minimumEra;
+    if (minimumEra && compareEras(this.runtime.getWorldEra?.() ?? 'ancient', minimumEra) < 0) return false;
     if (id === 'un_peacekeeping_mission') {
       if (!proposerNationId || this.runtime.isNationActive?.(proposerNationId) === false
         || this.runtime.hasActivePeacekeepingMissionForHost?.(proposerNationId)) return false;
@@ -1065,6 +1084,12 @@ export class WorldCouncilResolutionSystem {
   scorePolicySupport(nationId: string, resolutionId: WorldCouncilResolutionId): number {
     const personality = this.runtime.getLeaderPersonality?.(nationId);
     let score = 12 + (personality?.peacePreference ?? 50) * 0.2 - (personality?.aggressionBias ?? 50) * 0.2;
+    const protectedResources = this.definitions.get(resolutionId)?.protectedResourceIds;
+    if (protectedResources) {
+      const interest = protectedResources.reduce((sum, id) =>
+        sum + Math.max(0, this.runtime.getResourceEconomicInterest?.(nationId, id) ?? 0), 0);
+      score -= Math.min(100, interest * 45);
+    }
     if (resolutionId === 'climate_accord') {
       const energy = this.runtime.getEnergyPosition?.(nationId);
       score += energy?.activeFossilPlants
@@ -1098,6 +1123,10 @@ export class WorldCouncilResolutionSystem {
     }
     if (isNegativeResolution(proposal.resolutionId)) {
       return this.scorePunitiveVote(voterNationId, proposal, targetNationId);
+    }
+    if (this.definitions.get(proposal.resolutionId)?.protectedResourceIds) {
+      const support = this.scorePolicySupport(voterNationId, proposal.resolutionId);
+      return proposal.repealTargetEnactedResolutionId ? -support : support;
     }
     if (proposal.repealTargetEnactedResolutionId) {
       if (['climate_accord', 'nuclear_non_proliferation_treaty'].includes(proposal.resolutionId)) return -this.scorePolicySupport(voterNationId, proposal.resolutionId);
@@ -1898,6 +1927,8 @@ function toPublicDefinition(definition: ResolutionDefinitionConfig): WorldCounci
     description: definition.description,
     icon: definition.icon,
     votingType: definition.votingType,
+    ...(definition.minimumEra ? { minimumEra: definition.minimumEra } : {}),
+    ...(definition.protectedResourceIds ? { protectedResourceIds: definition.protectedResourceIds } : {}),
   };
 }
 

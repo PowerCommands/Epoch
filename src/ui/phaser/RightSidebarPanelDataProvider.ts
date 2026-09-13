@@ -1099,6 +1099,7 @@ export class RightSidebarPanelDataProvider {
       this.cityManager.getBuildings(city.id),
       this.gridSystem,
       EMPTY_MODIFIERS,
+      (technologyId) => (nation?.researchedTechIds ?? []).includes(technologyId),
     );
     const isHuman = city.ownerId === this.humanNationId;
     const integration = getCityIntegrationProgress(city, this.getCurrentTurn?.() ?? 0);

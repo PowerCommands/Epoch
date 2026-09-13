@@ -1,3 +1,4 @@
+import { bindResourceExploitationRules, type ResourceExploitationProhibition } from './resource/ResourceExploitationRules';
 import { getNaturalResourceById } from '../data/naturalResources';
 import { getManufacturedResourceById } from '../data/manufacturedResources';
 import { AEROSPACE_PARTS_ID } from '../data/scienceVictory';
@@ -65,7 +66,23 @@ export function isResourceExportEligible(resourceId: string): boolean {
  * they simply do not count as accessible until the predicate allows it.
  */
 export class ResourceAccessSystem {
-  private canUseResource: ResourceUsabilityPredicate = () => true;
+  private resourceUsability: ResourceUsabilityPredicate = () => true;
+  private isExploitationProhibited: ResourceExploitationProhibition = () => false;
+  private canUseResource = (nationId: string, resourceId: string): boolean =>
+    !this.isExploitationProhibited(resourceId) && this.resourceUsability(nationId, resourceId);
+
+  setResourceExploitationProhibition(predicate: ResourceExploitationProhibition): void {
+    this.isExploitationProhibited = predicate;
+    bindResourceExploitationRules(this.mapData, id => this.isExploitationProhibited(id));
+  }
+
+  /** Economic stake before legal restrictions, including sources and imports.
+   * Kept available during a ban so repeal voting still reflects lost business. */
+  getResourceEconomicInterest(nationId: string, resourceId: string): number {
+    if (!this.resourceUsability(nationId, resourceId)) return 0;
+    return this.countOwnedTiles(nationId, resourceId)
+      + this.getRawImportedResourceSourceCount(nationId, resourceId);
+  }
   private getManufacturedResourceQuantities: ManufacturedResourceProvider = () => new Map();
   private isImportBlocked: ImportBlockedPredicate = () => false;
   private getForeignExploitationYieldPercent: ForeignExploitationYieldPercentProvider = () => 0;
@@ -78,7 +95,7 @@ export class ResourceAccessSystem {
   ) {}
 
   setResourceUsabilityPredicate(predicate: ResourceUsabilityPredicate): void {
-    this.canUseResource = predicate;
+    this.resourceUsability = predicate;
   }
 
   setManufacturedResourceProvider(provider: ManufacturedResourceProvider): void {
@@ -177,6 +194,7 @@ export class ResourceAccessSystem {
    * canonical figure the UI, strategic capacity, power plants and AI all read.
    */
   getResourceSourceCount(nationId: string, resourceId: string): number {
+    if (this.isExploitationProhibited(resourceId)) return 0;
     return this.getBaseResourceSourceCount(nationId, resourceId)
       + this.getBuildingResourceCapacityBonusFor(nationId, resourceId);
   }

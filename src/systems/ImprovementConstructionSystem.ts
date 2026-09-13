@@ -1,3 +1,4 @@
+import { isTileResourceExploitationProhibited } from './resource/ResourceExploitationRules';
 import { canCarryUnitType } from '../data/units';
 import { MAINTAIN_NUCLEAR_PLANT } from '../data/nuclearPlants';
 import type { PowerPlantSystem } from './PowerPlantSystem';
@@ -178,6 +179,7 @@ export class ImprovementConstructionSystem {
         && this.powerPlants?.getNuclearPlantAt(tile, construction.ownerId)?.cityId === construction.cityId
         && construction.cityId !== undefined ? null : 'invalidTile';
     }
+    if (isTileResourceExploitationProhibited(tile)) return 'invalidTile';
     if (tile.improvementId !== undefined) return 'invalidTile';
     if (construction.improvementId === 'clean_nuclear_waste' && (tile.type !== TileType.NuclearWaste || tile.originalTerrain === undefined)) return 'invalidTile';
     const improvement = getImprovementById(construction.improvementId);

@@ -2871,6 +2871,8 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
+    resourceAccessSystem.setResourceExploitationProhibition(id => worldCouncilSystem.isResourceExploitationProhibited(id));
+    tradeDealSystem.setResourceTradeSuspension(id => worldCouncilSystem.isResourceExploitationProhibited(id));
     resourceAccessSystem.setResourceUsabilityPredicate((nationId, resourceId) => {
       const resource = getNaturalResourceById(resourceId);
       if (!resource) return false;
@@ -3041,6 +3043,8 @@ export class GameScene extends Phaser.Scene {
         && !worldCouncilSystem.getPeacekeepingAssignment(nationId, unit.id));
     };
     worldCouncilResolutionSystem.setRuntime({
+      getWorldEra: () => getHighestEra(nationManager.getAllNations().map(nation => eraSystem.getNationEra(nation.id))),
+      getResourceEconomicInterest: (nationId, resourceId) => resourceAccessSystem.getResourceEconomicInterest(nationId, resourceId),
       canAttack: (a, b) => diplomacyManager.canAttack(a, b),
       getEnergyPosition: energyPosition,
       getNuclearPosition: nationId => ({ weapons: unitManager.getUnitsByOwner(nationId).filter(u => ['atomic_bomb', 'nuclear_missile'].includes(u.unitType.id)).length,
@@ -10381,7 +10385,7 @@ export class GameScene extends Phaser.Scene {
 
       const hovered = cityViewInteraction.getHoveredCoord();
       const breakdown = hovered
-        ? getCityViewTileBreakdown(city, hovered, mapData, gridSystem, cityTerritorySystem)
+        ? getCityViewTileBreakdown(city, hovered, mapData, gridSystem, cityTerritorySystem, (technologyId) => researchSystem.isResearched(city.ownerId, technologyId))
         : null;
       if (breakdown) cityView.showTooltip(breakdown, pointer.x, pointer.y);
       else cityView.hideTooltip();

@@ -4,11 +4,13 @@ import {
   getDefaultCameraZoom,
   isAutoEndTurn,
   isAutofocusOnEndTurn,
+  isMapAnimationsEnabled,
   MAX_DEFAULT_CAMERA_ZOOM,
   MIN_DEFAULT_CAMERA_ZOOM,
   setAutoEndTurn,
   setAutofocusOnEndTurn,
   setDefaultCameraZoom,
+  setMapAnimationsEnabled,
 } from '../systems/PlayerSettings';
 import { isTutorialDontShowAgain, setTutorialDontShowAgain } from '../systems/TutorialSettings';
 import { clearAllLocalGameData } from '../systems/LocalGameData';
@@ -490,6 +492,11 @@ export class SettingsDialog {
     ));
     group.appendChild(this.buildDefaultZoomControl());
     group.appendChild(this.buildCheckbox(
+      'settings-map-animations-toggle',
+      'Map animations',
+      'Animate animals and map effects. Turn off to reduce graphics work. Paused during autoplay.',
+    ));
+    group.appendChild(this.buildCheckbox(
       'settings-auto-end-turn-toggle',
       'Auto end turn',
       'Automatically end the turn when no units need orders.',
@@ -559,6 +566,10 @@ export class SettingsDialog {
   }
 
   private wirePreferenceToggles(): void {
+    const mapAnimations = this.overlay.querySelector<HTMLInputElement>('.settings-map-animations-toggle');
+    mapAnimations?.addEventListener('change', () => {
+      setMapAnimationsEnabled(mapAnimations.checked);
+    });
     const autofocus = this.overlay.querySelector<HTMLInputElement>('.settings-autofocus-toggle');
     const autoEndTurn = this.overlay.querySelector<HTMLInputElement>('.settings-auto-end-turn-toggle');
     const startGuide = this.overlay.querySelector<HTMLInputElement>('.settings-start-guide-toggle');
@@ -583,6 +594,8 @@ export class SettingsDialog {
   }
 
   private syncPreferenceToggles(): void {
+    const mapAnimations = this.overlay.querySelector<HTMLInputElement>('.settings-map-animations-toggle');
+    if (mapAnimations) mapAnimations.checked = isMapAnimationsEnabled();
     const autofocus = this.overlay.querySelector<HTMLInputElement>('.settings-autofocus-toggle');
     const autoEndTurn = this.overlay.querySelector<HTMLInputElement>('.settings-auto-end-turn-toggle');
     const startGuide = this.overlay.querySelector<HTMLInputElement>('.settings-start-guide-toggle');

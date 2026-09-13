@@ -5,6 +5,7 @@ import type { NaturalResourceYield } from '../types/naturalResources';
 import type { City } from '../entities/City';
 import type { MapData } from '../types/map';
 import { getWorkedTileYieldBreakdown } from './CityEconomy';
+import { NO_TECH_AVAILABILITY, type TechAvailability } from '../data/improvements';
 import type { CityTerritorySystem } from './CityTerritorySystem';
 import type { IGridSystem } from './grid/IGridSystem';
 
@@ -44,6 +45,7 @@ export function getCityViewTileBreakdown(
   mapData: MapData,
   gridSystem: IGridSystem,
   cityTerritorySystem: CityTerritorySystem,
+  hasTech: TechAvailability = NO_TECH_AVAILABILITY,
 ): CityViewTileBreakdown | null {
   const tile = mapData.tiles[coord.y]?.[coord.x];
   if (!tile) return null;
@@ -54,7 +56,7 @@ export function getCityViewTileBreakdown(
     cityTerritorySystem.getClaimableTiles(city, mapData).map((entry) => `${entry.x},${entry.y}`),
   );
   const workedYieldMap = new Map<string, ReturnType<typeof getWorkedTileYieldBreakdown>[number]>(
-    getWorkedTileYieldBreakdown(city, mapData, gridSystem)
+    getWorkedTileYieldBreakdown(city, mapData, gridSystem, hasTech)
       .map((entry) => [`${entry.coord.x},${entry.coord.y}`, entry] as const),
   );
 

@@ -5,6 +5,19 @@ import test from 'node:test';
 import { AMBIENT_PROFILES, ambientMotion, ambientSeed } from '../src/systems/rendering/AmbientProfiles';
 import { FISH_SCHOOL_COUNT, fishSchoolPose } from '../src/systems/rendering/FishSchool';
 
+test('elephant walk loops without drift and alternates planted and lifted feet', () => {
+  for(const [u,v] of [[.44,.92],[.53,.81],[.72,.64],[.82,.71],[.28,.74]]) {
+    for(const t of [0,.3,1,2.79]) {
+      const a=resourceAnimalOffset('elephant',u,v,t,.23);
+      const b=resourceAnimalOffset('elephant',u,v,t+2.8,.23);
+      assert.ok(Math.hypot(a[0]-b[0],a[1]-b[1])<1e-10);
+    }
+  }
+  const foot=Array.from({length:28},(_,i)=>resourceAnimalOffset('elephant',.44,.92,i*.1,0));
+  assert.ok(Math.max(...foot.map(p=>p[0]))-Math.min(...foot.map(p=>p[0]))>.05);
+  assert.ok(Math.max(...foot.map(p=>p[1]))-Math.min(...foot.map(p=>p[1]))>.015);
+});
+
 test('school fish stay inside the tile and face their swimming direction', () => {
   for(let n=0;n<FISH_SCHOOL_COUNT;n++) for(let t=0;t<60;t+=.17) {
     const pose=fishSchoolPose(n,t,.31),next=fishSchoolPose(n,t+.001,.31);

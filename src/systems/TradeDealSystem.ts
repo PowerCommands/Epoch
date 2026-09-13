@@ -42,6 +42,13 @@ export class TradeDealSystem {
    * Defaults to true so existing tests/back-compat paths are unaffected.
    */
   private hasTradeNetworks: (nationId: string) => boolean = () => true;
+  private isResourceTradeSuspended: (resourceId: string) => boolean = () => false;
+
+  /** Suspend deliveries/payments under global exploitation law; contracts still age normally. */
+  setResourceTradeSuspension(predicate: (resourceId: string) => boolean): void {
+    this.isResourceTradeSuspended = predicate;
+  }
+
   private restrictionProvider: TradeDealRestrictionProvider = () => undefined;
   /**
    * The human player's nation, if any. When a deal involves the human, trade
@@ -99,6 +106,11 @@ export class TradeDealSystem {
   advanceTurnForNation(nationId: string): void {
     for (const deal of Array.from(this.deals.values())) {
       if (deal.buyerNationId !== nationId) continue;
+      if (this.isResourceTradeSuspended(deal.resourceId)) {
+        deal.remainingTurns -= 1;
+        if (deal.remainingTurns <= 0) this.expireDeal(deal);
+        continue;
+      }
 
       // Tariffs are a symbolic diplomatic action and never alter trade value.
       // Boycott/Embargo deals are removed when imposed and blocked at creation.
@@ -170,6 +182,7 @@ export class TradeDealSystem {
 
   getGoldPerTurnDeltaForNation(nationId: string): number {
     return Array.from(this.deals.values()).reduce((sum, deal) => {
+      if (this.isResourceTradeSuspended(deal.resourceId)) return sum;
       if (deal.sellerNationId === nationId) return sum + this.historicalGold(nationId, deal.goldPerTurn);
       if (deal.buyerNationId === nationId) return sum - deal.goldPerTurn;
       return sum;

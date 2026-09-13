@@ -4,7 +4,13 @@
 import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
 import { getBuildingById } from '../data/buildings';
-import { getImprovementById } from '../data/improvements';
+import {
+  getImprovementById,
+  getImprovementTechYieldDelta,
+  NO_TECH_AVAILABILITY,
+  type TechAvailability,
+} from '../data/improvements';
+import { isTileResourceExploitationProhibited } from './resource/ResourceExploitationRules';
 import { getNaturalResourceById } from '../data/naturalResources';
 import { getTerrainYield, type TileYield } from '../data/terrainYields';
 import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
@@ -65,9 +71,10 @@ export function calculateCityEconomy(
   buildings: CityBuildings,
   gridSystem: IGridSystem,
   modifiers: Readonly<ModifierSet> = EMPTY_MODIFIERS,
+  hasTech: TechAvailability = NO_TECH_AVAILABILITY,
 ): CityEconomySummary {
   const workableTiles = getOwnedTiles(city, mapData, gridSystem);
-  const workedTiles = getStoredWorkedTiles(city, mapData, gridSystem);
+  const workedTiles = getStoredWorkedTiles(city, mapData, gridSystem, hasTech);
   let food = BASE_CITY_FOOD;
   let production = 0;
   let gold = city.population;
@@ -156,9 +163,10 @@ export function getWorkedTiles(
   city: City,
   mapData: MapData,
   gridSystem: IGridSystem,
+  hasTech: TechAvailability = NO_TECH_AVAILABILITY,
 ): WorkedTileYield[] {
   return getWorkableTiles(city, mapData, gridSystem)
-    .map((tile) => ({ tile, ...getTileYield(tile) }))
+    .map((tile) => ({ tile, ...getTileYield(tile, hasTech) }))
     .sort((a, b) => {
       if (a.food !== b.food) return b.food - a.food;
       if (a.production !== b.production) return b.production - a.production;
@@ -189,23 +197,25 @@ export function getStoredWorkedTiles(
   city: City,
   mapData: MapData,
   gridSystem: IGridSystem,
+  hasTech: TechAvailability = NO_TECH_AVAILABILITY,
 ): WorkedTileYield[] {
   if (city.workedTileCoords.length === 0) {
-    return getWorkedTiles(city, mapData, gridSystem);
+    return getWorkedTiles(city, mapData, gridSystem, hasTech);
   }
 
   return city.workedTileCoords
     .map(({ x, y }) => mapData.tiles[y]?.[x])
     .filter((tile): tile is Tile => tile !== undefined)
-    .map((tile) => ({ tile, ...getTileYield(tile) }));
+    .map((tile) => ({ tile, ...getTileYield(tile, hasTech) }));
 }
 
 export function getWorkedTileYieldBreakdown(
   city: City,
   mapData: MapData,
   gridSystem: IGridSystem,
+  hasTech: TechAvailability = NO_TECH_AVAILABILITY,
 ): WorkedTileYieldBreakdown[] {
-  return getStoredWorkedTiles(city, mapData, gridSystem).map((worked) => ({
+  return getStoredWorkedTiles(city, mapData, gridSystem, hasTech).map((worked) => ({
     coord: { x: worked.tile.x, y: worked.tile.y },
     food: worked.food,
     production: worked.production,
@@ -216,10 +226,13 @@ export function getWorkedTileYieldBreakdown(
   }));
 }
 
-export function getTileYield(tile: Tile): Omit<WorkedTileYield, 'tile'> {
+export function getTileYield(
+  tile: Tile,
+  hasTech: TechAvailability = NO_TECH_AVAILABILITY,
+): Omit<WorkedTileYield, 'tile'> {
   if (tile.type === TileType.NuclearWaste) return { food: 0, production: 0, gold: 0, science: 0, culture: 0, happiness: 0 };
   const terrainYield = getTerrainYield(tile.type);
-  const improvementYield = getTileImprovementYield(tile);
+  const improvementYield = getTileImprovementYield(tile, hasTech);
   const resourceYield = getTileNaturalResourceYield(tile);
   return {
     food: terrainYield.food + improvementYield.food + resourceYield.food,
@@ -231,14 +244,24 @@ export function getTileYield(tile: Tile): Omit<WorkedTileYield, 'tile'> {
   };
 }
 
-export function getTileImprovementYield(tile: Tile): TileYield {
-  if (!tile.improvementId) return ZERO_TILE_YIELD;
-  return getImprovementById(tile.improvementId)?.yieldBonus ?? ZERO_TILE_YIELD;
+export function getTileImprovementYield(
+  tile: Tile,
+  hasTech: TechAvailability = NO_TECH_AVAILABILITY,
+): TileYield {
+  if (!tile.improvementId || isTileResourceExploitationProhibited(tile)) return ZERO_TILE_YIELD;
+  const base = getImprovementById(tile.improvementId)?.yieldBonus ?? ZERO_TILE_YIELD;
+  const delta = getImprovementTechYieldDelta(tile.improvementId, hasTech);
+  if (delta.food === 0 && delta.production === 0 && delta.gold === 0) return base;
+  return {
+    food: base.food + delta.food,
+    production: base.production + delta.production,
+    gold: base.gold + delta.gold,
+  };
 }
 
 export function getTileNaturalResourceYield(tile: Tile): Omit<WorkedTileYield, 'tile'> {
   const resource = tile.resourceId ? getNaturalResourceById(tile.resourceId) : undefined;
-  if (!resource) {
+  if (!resource || isTileResourceExploitationProhibited(tile)) {
     return {
       ...ZERO_TILE_YIELD,
       science: 0,
