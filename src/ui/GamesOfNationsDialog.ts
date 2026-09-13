@@ -1,8 +1,10 @@
+import { EMPIRE_OVERLAY_STYLE, EMPIRE_CARD_SURFACE, EMPIRE_DIALOG_CSS } from './EmpireDialogTheme';
 import { ALL_GAMES_SPORTS, getGamesSportByName } from '../data/gamesOfNationsSports';
 import { GAMES_POINTS_PER_RESOURCE, reduceGamesStrategyToBudget } from '../systems/GamesOfNationsSystem';
 import type { GamesOfNationsSport, GamesOfNationsSportId, GamesOfNationsSportValues } from '../types/gamesOfNations';
 import {
   getEffectivePlannedGamesPoints,
+  commitmentView,
   type GamesOfNationsUiModel,
 } from './hud/GamesOfNationsUiModel';
 
@@ -195,13 +197,18 @@ export class GamesOfNationsDialog {
     const subtitle = model.suspendedForWorldWar
       ? `Games #${model.gamesNumber} · ${model.phaseLabel} · SUSPENDED — WORLD WAR`
       : `Games #${model.gamesNumber} · ${model.phaseLabel}`;
-    titleGroup.append(heading('Games of Nations', 'h1'), text(subtitle, 'gon-subtitle'));
+    titleGroup.append(text('International competition', 'empire-kicker'), heading('Games of Nations', 'h1'), text(subtitle, 'gon-subtitle'));
     header.append(titleGroup, button('Close', 'gon-close', () => this.close()));
     card.append(header);
     if (model.suspendedForWorldWar) {
       card.appendChild(notice('SUSPENDED — WORLD WAR. The Games of Nations schedule is frozen and will resume when no Historical World War remains active. Committed investment and any competition results are preserved.'));
     }
-    card.append(this.buildStatus(model), this.buildHostAdvantage(model));
+    const overview = element('details', 'gon-overview');
+    const overviewLabel = element('summary');
+    overviewLabel.textContent = `${model.hostLabel} · ${model.phaseLabel} · Event details`;
+    overview.append(overviewLabel, this.buildStatus(model));
+    if (!model.humanIsHost) overview.appendChild(this.buildHostAdvantage(model));
+    card.appendChild(overview);
 
     if (model.phase === 'waitingForFirstGames') {
       card.appendChild(notice(
@@ -260,7 +267,19 @@ export class GamesOfNationsDialog {
   private buildInvestment(model: GamesOfNationsUiModel): HTMLElement {
     const participant = model.participant;
     const editable = model.controlsEditable;
-    const section = element('section', 'gon-investment');
+    const wizard = element('section', 'gon-wizard');
+    const section = element('section', 'gon-step-page');
+    const allocation = element('section', 'gon-step-page');
+    const host = model.humanIsHost ? this.buildHostAdvantage(model) : null;
+    const pages = host ? [host, section, allocation] : [section, allocation];
+    const labels = host ? ['Host sport', 'Investment', 'Sport allocation'] : ['Investment', 'Sport allocation'];
+    const stepper = element('nav', 'gon-stepper');
+    stepper.setAttribute('aria-label', 'Configuration steps');
+    const body = element('div', 'gon-step-body');
+    body.append(...pages);
+    wizard.append(stepper, body);
+    let currentStep = 0;
+    let syncNavigation = (): void => {};
     const headingRow = element('div', 'gon-section-heading');
     headingRow.append(heading('Preparation investment', 'h2'), text(editable
       ? 'Changes affect future Preparation turns only.'
@@ -299,14 +318,18 @@ export class GamesOfNationsDialog {
     );
     section.appendChild(pointsSummary);
 
-    section.append(heading('Locked investment this Games', 'h2'));
+    const locked = element('details', 'gon-locked-details');
+    const lockedLabel = element('summary');
+    lockedLabel.textContent = 'Already invested this Games';
+    locked.appendChild(lockedLabel);
+    section.appendChild(locked);
     const totals = element('div', 'gon-status-grid');
     totals.append(
       metric('Culture invested', `${participant?.totalCultureInvested ?? 0}`),
       metric('Base Production invested', `${participant?.totalProductionInvested ?? 0}`),
       metric('Total Games Points', `${participant?.totalGamesPoints ?? 0} GP`),
     );
-    section.appendChild(totals);
+    locked.appendChild(totals);
 
     const earnedPool = participant?.unallocatedGamesPoints ?? 0;
     const storedStrategy = participant?.gamesPointsStrategyBySport ?? participant?.gamesPointsBySport;
@@ -326,7 +349,7 @@ export class GamesOfNationsDialog {
       poolValue,
       poolHint,
     );
-    section.append(poolHeader, heading('Recurring sport strategy', 'h2'));
+    allocation.append(heading('Sport allocation', 'h2'), poolHeader);
     const allocationTable = element('div', 'gon-sport-grid');
     allocationTable.setAttribute('role', 'group');
     allocationTable.setAttribute('aria-label', 'Direct Games Points allocation');
@@ -395,7 +418,7 @@ export class GamesOfNationsDialog {
       card.appendChild(controls);
       allocationTable.appendChild(card);
     }
-    section.appendChild(allocationTable);
+    allocation.appendChild(allocationTable);
 
     const poolActions = element('div', 'gon-pool-actions');
     const distributeEvenly = button('Distribute Remaining Evenly', 'gon-distribute', () => {
@@ -409,7 +432,7 @@ export class GamesOfNationsDialog {
     });
     const unallocatedLabel = text('', 'gon-unallocated');
     poolActions.append(unallocatedLabel, distributeEvenly);
-    section.appendChild(poolActions);
+    allocation.appendChild(poolActions);
 
     const validation = text('', 'gon-validation');
     validation.setAttribute('aria-live', 'polite');
@@ -425,6 +448,19 @@ export class GamesOfNationsDialog {
     }, true);
     refreshDraft = (): void => {
       const budget = draftBudget();
+      const cultureDraft = commitmentView(readWhole(cultureInput), model.culture.available);
+      const productionDraft = commitmentView(readWhole(productionInput), model.production.available);
+      const availableBudget = cultureDraft.achievableGamesPoints + productionDraft.achievableGamesPoints;
+      [cultureDraft, productionDraft].forEach((draft, i) => {
+        const card = commitments.children[i];
+        card.querySelector('.gon-potential')!.textContent = `Potential: ${draft.potentialGamesPoints} GP / turn`;
+        const status = card.querySelector('.gon-commitment-status')!;
+        status.textContent = draft.status;
+        status.classList.toggle('gon-affordable', draft.affordable);
+        status.classList.toggle('gon-unavailable', !draft.affordable);
+      });
+      pointsSummary.replaceChildren(metric('Planned investment', `${budget} GP / turn`),
+        metric('Currently achievable', `${availableBudget} GP / turn`));
       if (strategyTotal() > budget) {
         Object.assign(strategy, reduceGamesStrategyToBudget(strategy, budget, model.activeSports));
       }
@@ -454,17 +490,56 @@ export class GamesOfNationsDialog {
           : model.strategyAdjustmentPending
             ? 'Actual resources changed last turn. The strategy was reduced from its largest sport allocations; review and apply the new balance.'
             : 'The recurring strategy is balanced and ready to apply.';
+      syncNavigation();
     };
     this.hostBonusSelectionChanged = refreshDraft;
     cultureInput.addEventListener('input', () => { sanitizeDraft(cultureInput); refreshDraft(); });
     productionInput.addEventListener('input', () => { sanitizeDraft(productionInput); refreshDraft(); });
     refreshDraft();
     const footer = element('div', 'gon-panel-footer');
-    footer.append(validation, apply);
-    section.appendChild(footer);
+    const stepStatus = text('', 'gon-step-status');
+    stepStatus.setAttribute('aria-live', 'polite');
+    const back = button('Back', 'gon-back', () => navigate(currentStep - 1));
+    const next = button('Next', 'gon-next gon-primary', () => navigate(currentStep + 1));
+    const navigate = (step: number): void => {
+      if (step < 0 || step >= pages.length) return;
+      if (step > 0 && model.hostBonusSelectionRequired && !this.hostBonusSportDraft) return;
+      currentStep = step;
+      syncNavigation();
+      body.scrollTop = 0;
+      const title = pages[step].querySelector('h2');
+      if (title) { title.tabIndex = -1; title.focus({ preventScroll: true }); }
+    };
+    const stepButtons = labels.map((label, i) => {
+      const control = button(`${i + 1}. ${label}`, 'gon-step', () => navigate(i));
+      stepper.appendChild(control);
+      return control;
+    });
+    syncNavigation = (): void => {
+      pages.forEach((page, i) => { page.hidden = i !== currentStep; });
+      stepButtons.forEach((control, i) => {
+        control.setAttribute('aria-current', i === currentStep ? 'step' : 'false');
+        control.disabled = i > 0 && model.hostBonusSelectionRequired && !this.hostBonusSportDraft;
+      });
+      back.hidden = currentStep === 0;
+      next.hidden = currentStep === pages.length - 1;
+      next.disabled = currentStep === 0 && model.hostBonusSelectionRequired && !this.hostBonusSportDraft;
+      next.textContent = `Next: ${labels[currentStep + 1] ?? 'Finish'}`;
+      apply.hidden = currentStep !== pages.length - 1;
+      validation.hidden = currentStep !== pages.length - 1;
+      stepStatus.textContent = `Step ${currentStep + 1} of ${pages.length}`;
+    };
+    syncNavigation();
+    footer.append(stepStatus, validation, back, next, apply);
+    wizard.appendChild(footer);
 
-    section.appendChild(notice('Each successfully invested Culture or base Production point generates 10 GP. Your recurring sport strategy is configured immediately, but GP becomes locked investment only after the resources are actually paid. If actual GP falls below the plan, the largest planned sport allocations are reduced until the strategy balances, and the panel opens for human review.'));
-    return section;
+    const help = element('details', 'gon-locked-details');
+    const helpLabel = element('summary');
+    helpLabel.textContent = 'How investment works';
+    help.appendChild(helpLabel);
+    section.appendChild(help);
+    help.appendChild(notice('Each successfully invested Culture or base Production point generates 10 GP. Your recurring sport strategy is configured immediately, but GP becomes locked investment only after the resources are actually paid. If actual GP falls below the plan, the largest planned sport allocations are reduced until the strategy balances, and the panel opens for human review.'));
+    return wizard;
   }
 
   private buildHostAdvantage(model: GamesOfNationsUiModel): HTMLElement {
@@ -485,11 +560,26 @@ export class GamesOfNationsDialog {
       select.setAttribute('aria-label', 'Host bonus sport');
       select.appendChild(new Option('Choose one sport', ''));
       for (const sport of model.activeSports) select.appendChild(new Option(sport, sport));
+      const choices = element('div', 'gon-host-sports');
+      const choiceButtons = model.activeSports.map((sport) => {
+        const control = button(sport, 'gon-host-sport', () => {
+          select.value = sport;
+          select.dispatchEvent(new Event('change'));
+        });
+        const image = element('img');
+        image.src = getGamesSportByName(sport).image;
+        image.alt = '';
+        control.prepend(image);
+        control.setAttribute('aria-pressed', 'false');
+        choices.appendChild(control);
+        return control;
+      });
       select.addEventListener('change', () => {
+        choiceButtons.forEach((control, i) => control.setAttribute('aria-pressed', String(model.activeSports[i] === select.value)));
         this.hostBonusSportDraft = model.activeSports.find((sport) => sport === select.value);
         this.hostBonusSelectionChanged?.();
       });
-      section.appendChild(select);
+      section.append(select, choices);
       return section;
     }
     const assignment = model.hostBonusSport
@@ -565,7 +655,9 @@ export class GamesOfNationsDialog {
   }
 
   private createShell(label: string): { overlay: HTMLDivElement; card: HTMLElement } {
+    const mode = this.mode;
     this.close();
+    this.mode = mode;
     const overlay = document.createElement('div');
     overlay.id = OVERLAY_ID;
     overlay.className = 'gon-overlay';
@@ -600,33 +692,26 @@ export class GamesOfNationsDialog {
   };
 }
 
-const OVERLAY_STYLE = `
-  position:fixed;inset:0;z-index:10018;display:flex;align-items:center;justify-content:center;
-  box-sizing:border-box;padding:18px;background:rgba(2,8,23,.82);color:#e8f0ff;
-  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-`;
-const CARD_STYLE = `
-  width:min(1120px,96vw);max-height:94vh;overflow:auto;box-sizing:border-box;padding:clamp(20px,3vw,32px);
-  border:1px solid #315b91;border-radius:12px;background:linear-gradient(145deg,#071a35,#0b2447 62%,#091a31);
-  box-shadow:0 28px 90px rgba(0,0,0,.7),inset 0 1px rgba(147,197,253,.08);
-`;
+const OVERLAY_STYLE = EMPIRE_OVERLAY_STYLE;
+const CARD_STYLE = `width:min(1120px,96vw);max-height:94dvh;overflow:auto;box-sizing:border-box;padding:clamp(18px,2.5vw,28px);${EMPIRE_CARD_SURFACE}`;
 
 function appendStyles(overlay: HTMLElement): void {
   const style = document.createElement('style');
   style.textContent = `
-    .gon-card h1{margin:0 0 8px;font-size:clamp(25px,4vw,38px);color:#f8fbff}.gon-card h2{margin:22px 0 10px;font-size:18px;color:#bfdbfe}
-    .gon-card p{line-height:1.52;color:#d7e3f5}.gon-host,.gon-emphasis{font-size:17px;color:#bfdbfe;margin:8px 0}.gon-emphasis{font-weight:700}
+    .gon-card h1{margin:0 0 8px;font-size:clamp(25px,4vw,38px);color:var(--empire-text)}.gon-card h2{margin:22px 0 10px;font-size:18px;color:var(--empire-text)}
+    .gon-card p{line-height:1.52;color:var(--empire-text)}.gon-host,.gon-emphasis{font-size:17px;color:var(--empire-text);margin:8px 0}.gon-emphasis{font-weight:700}
     .gon-actions,.gon-panel-footer{display:flex;gap:12px;justify-content:flex-end;align-items:center;flex-wrap:wrap;margin-top:24px}
-    .gon-card button{border:1px solid #6b8fbd;border-radius:5px;background:#112b50;color:#eef6ff;padding:10px 17px;font:700 14px inherit;cursor:pointer}
-    .gon-card button:hover:not(:disabled),.gon-card button:focus-visible{background:#174477;outline:2px solid #93c5fd;outline-offset:2px}.gon-card button.gon-participate,.gon-card button.gon-apply{background:#1d4ed8;border-color:#60a5fa}.gon-card button:disabled{opacity:.45;cursor:not-allowed}
-    .gon-card select{min-width:220px;box-sizing:border-box;padding:9px;border:1px solid #537aa5;border-radius:4px;background:#071525;color:#fff;font:700 14px inherit}
-    .gon-panel-header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.gon-subtitle,.gon-muted{color:#9fb5d1;font-size:14px}.gon-status-grid,.gon-points-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
-    .gon-metric{padding:11px 13px;border:1px solid #24466f;border-radius:7px;background:rgba(3,13,29,.48)}.gon-metric-label{display:block;color:#8eabc9;font-size:12px;text-transform:uppercase;letter-spacing:.06em}.gon-metric-value{display:block;margin-top:4px;font-weight:700;color:#f1f6ff}
-    .gon-notice{margin:16px 0;padding:11px 13px;border-left:3px solid #60a5fa;background:rgba(30,64,175,.15);line-height:1.45;color:#d8e8fb}.gon-section-heading{display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap}
-    .gon-commitment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.gon-commitment-card{padding:14px;border:1px solid #294d78;border-radius:8px;background:rgba(3,14,31,.55)}.gon-field-label{display:block;font-weight:700;color:#dbeafe;margin-bottom:8px}.gon-number-wrap{display:flex;align-items:center;gap:8px}.gon-card input[type=number]{width:92px;box-sizing:border-box;padding:8px;border:1px solid #537aa5;border-radius:4px;background:#071525;color:#fff;font:700 16px inherit}.gon-card input:disabled{opacity:.55}.gon-availability,.gon-cost-note,.gon-commitment-status{display:block;margin-top:8px;font-size:13px;color:#a9bfd7}.gon-commitment-status{font-weight:700}.gon-unavailable{color:#fca5a5}.gon-affordable{color:#86efac}
-    .gon-gp-pool{display:grid;grid-template-columns:1fr auto;gap:5px 18px;align-items:center;margin:22px 0 8px;padding:16px 18px;border:1px solid #3b82f6;border-radius:9px;background:linear-gradient(135deg,rgba(29,78,216,.23),rgba(3,14,31,.62))}.gon-gp-pool .gon-muted{grid-column:1/-1}.gon-gp-pool-value{font-size:28px;font-weight:900;color:#f8fbff}.gon-sport-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:13px}.gon-sport-card{min-width:0;display:flex;flex-direction:column;gap:9px;padding:13px;border:1px solid #294d78;border-radius:9px;background:rgba(3,14,31,.66);overflow:hidden}.gon-sport-name{font-weight:900;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:#dbeafe}.gon-sport-image{width:100%;height:105px;object-fit:cover;border-radius:6px;border:1px solid #203e62;background:#071525}.gon-sport-committed{font-size:19px;font-weight:900;color:#f1f6ff}.gon-sport-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:auto}.gon-card button.gon-gp-add{padding:8px 5px;font-size:12px}.gon-host-bonus-chip{align-self:flex-start;padding:4px 7px;border:1px solid #d4a72c;border-radius:999px;background:rgba(180,120,20,.17);color:#fde68a;font-size:12px;font-weight:800}.gon-sport-effective{color:#bfdbfe;font-size:13px;font-weight:700}.gon-pool-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:15px 0;padding:13px 15px;border:1px solid #24466f;border-radius:8px;background:rgba(3,13,29,.48)}.gon-unallocated{font-size:18px;font-weight:900;color:#f1f6ff}.gon-validation{margin-right:auto;color:#fca5a5}.gon-validation.gon-valid{color:#86efac}
-    .gon-medal-table{display:grid;border:1px solid #294d78;border-radius:8px;overflow:hidden;margin:10px 0 16px}.gon-medal-row{display:grid;grid-template-columns:minmax(180px,1fr) repeat(3,80px);gap:8px;padding:9px 12px;border-top:1px solid #1d3859;text-align:center}.gon-medal-row:first-child{border-top:0}.gon-medal-header{background:#102d52;color:#bfdbfe;font-size:12px;font-weight:800;text-transform:uppercase}.gon-medal-nation{text-align:left;font-weight:700}.gon-empty-result{padding:12px;color:#9fb5d1}.gon-result-sports{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px}.gon-result-sport{padding:11px;border:1px solid #294d78;border-radius:7px;background:rgba(3,14,31,.55);display:grid;gap:4px;font-size:13px}.gon-result-sport-name{font-weight:800;color:#dbeafe}.gon-result-status{color:#93c5fd;text-transform:uppercase;font-size:11px;letter-spacing:.06em}.gon-result-upcoming{opacity:.66}.gon-result-current{border-color:#60a5fa}.gon-result-gold{color:#fde68a;font-weight:700}
-    @media(max-width:680px){.gon-commitment-grid{grid-template-columns:1fr}.gon-sport-grid{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}.gon-sport-image{height:88px}.gon-card{padding:18px}.gon-panel-header{position:sticky;top:0;background:#071a35;padding-bottom:10px;z-index:1}}
+    .gon-card button{border:1px solid var(--empire-gold);border-radius:2px;background:var(--empire-panel);color:var(--empire-text);padding:10px 17px;font:700 14px inherit;cursor:pointer}
+    .gon-card button:hover:not(:disabled),.gon-card button:focus-visible{background:var(--empire-panel-hover);outline:2px solid var(--empire-text);outline-offset:2px}.gon-card button.gon-participate,.gon-card button.gon-apply{background:var(--empire-gold-muted);border-color:var(--empire-gold)}.gon-card button:disabled{opacity:.45;cursor:not-allowed}
+    .gon-card select{min-width:220px;box-sizing:border-box;padding:9px;border:1px solid var(--empire-gold);border-radius:2px;background:var(--empire-panel);color:#fff;font:700 14px inherit}
+    .gon-panel-header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.gon-subtitle,.gon-muted{color:var(--empire-text);font-size:14px}.gon-status-grid,.gon-points-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
+    .gon-metric{padding:11px 13px;border:1px solid var(--empire-border);border-radius:2px;background:rgba(5,13,22,.6)}.gon-metric-label{display:block;color:var(--empire-text);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.gon-metric-value{display:block;margin-top:4px;font-weight:700;color:var(--empire-text)}
+    .gon-notice{margin:16px 0;padding:11px 13px;border-left:3px solid var(--empire-gold);background:rgba(168,112,45,.10);line-height:1.45;color:var(--empire-text)}.gon-section-heading{display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap}
+    .gon-commitment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.gon-commitment-card{padding:14px;border:1px solid var(--empire-border);border-radius:2px;background:rgba(5,13,22,.6)}.gon-field-label{display:block;font-weight:700;color:var(--empire-text);margin-bottom:8px}.gon-number-wrap{display:flex;align-items:center;gap:8px}.gon-card input[type=number]{width:92px;box-sizing:border-box;padding:8px;border:1px solid var(--empire-gold);border-radius:2px;background:var(--empire-panel);color:#fff;font:700 16px inherit}.gon-card input:disabled{opacity:.55}.gon-availability,.gon-cost-note,.gon-commitment-status{display:block;margin-top:8px;font-size:13px;color:var(--empire-text)}.gon-commitment-status{font-weight:700}.gon-unavailable{color:#f3a09a}.gon-affordable{color:#91c58c}
+    .gon-gp-pool{display:grid;grid-template-columns:1fr auto;gap:5px 18px;align-items:center;margin:22px 0 8px;padding:16px 18px;border:1px solid var(--empire-gold);border-radius:2px;background:linear-gradient(135deg,rgba(168,112,45,.10),rgba(5,13,22,.6))}.gon-gp-pool .gon-muted{grid-column:1/-1}.gon-gp-pool-value{font-size:28px;font-weight:900;color:var(--empire-text)}.gon-sport-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:13px}.gon-sport-card{min-width:0;display:flex;flex-direction:column;gap:9px;padding:13px;border:1px solid var(--empire-border);border-radius:2px;background:rgba(5,13,22,.6);overflow:hidden}.gon-sport-name{font-weight:900;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--empire-text)}.gon-sport-image{width:100%;height:105px;object-fit:cover;border-radius:2px;border:1px solid var(--empire-border);background:var(--empire-panel)}.gon-sport-committed{font-size:19px;font-weight:900;color:var(--empire-text)}.gon-sport-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:auto}.gon-card button.gon-gp-add{padding:8px 5px;font-size:12px}.gon-host-bonus-chip{align-self:flex-start;padding:4px 7px;border:1px solid var(--empire-gold);border-radius:999px;background:rgba(180,120,20,.17);color:var(--empire-gold-bright);font-size:12px;font-weight:800}.gon-sport-effective{color:var(--empire-text);font-size:13px;font-weight:700}.gon-pool-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:15px 0;padding:13px 15px;border:1px solid var(--empire-border);border-radius:2px;background:rgba(5,13,22,.6)}.gon-unallocated{font-size:18px;font-weight:900;color:var(--empire-text)}.gon-validation{margin-right:auto;color:#f3a09a}.gon-validation.gon-valid{color:#91c58c}
+    .gon-medal-table{display:grid;border:1px solid var(--empire-border);border-radius:2px;overflow:hidden;margin:10px 0 16px}.gon-medal-row{display:grid;grid-template-columns:minmax(180px,1fr) repeat(3,80px);gap:8px;padding:9px 12px;border-top:1px solid var(--empire-border);text-align:center}.gon-medal-row:first-child{border-top:0}.gon-medal-header{background:var(--empire-panel);color:var(--empire-text);font-size:12px;font-weight:800;text-transform:uppercase}.gon-medal-nation{text-align:left;font-weight:700}.gon-empty-result{padding:12px;color:var(--empire-text)}.gon-result-sports{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px}.gon-result-sport{padding:11px;border:1px solid var(--empire-border);border-radius:2px;background:rgba(5,13,22,.6);display:grid;gap:4px;font-size:13px}.gon-result-sport-name{font-weight:800;color:var(--empire-text)}.gon-result-status{color:var(--empire-text);text-transform:uppercase;font-size:11px;letter-spacing:.06em}.gon-result-upcoming{opacity:.66}.gon-result-current{border-color:var(--empire-gold)}.gon-result-gold{color:var(--empire-gold-bright);font-weight:700}
+    @media(max-width:680px){.gon-commitment-grid{grid-template-columns:1fr}.gon-sport-grid{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}.gon-sport-image{height:88px}.gon-card{padding:18px}.gon-panel-header{position:sticky;top:0;background:var(--empire-panel);padding-bottom:10px;z-index:1}}
+    ${EMPIRE_DIALOG_CSS}
   `;
   overlay.appendChild(style);
 }
@@ -704,7 +789,7 @@ function commitmentCard(
     fieldLabel,
     inputWrap,
     text(availability, 'gon-availability'),
-    text(`Potential: ${view.potentialGamesPoints} GP / turn`, 'gon-availability'),
+    text(`Potential: ${view.potentialGamesPoints} GP / turn`, 'gon-availability gon-potential'),
     status,
     text(note, 'gon-cost-note'),
   );

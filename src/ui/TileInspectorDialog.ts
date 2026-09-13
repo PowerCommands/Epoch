@@ -1,4 +1,5 @@
-import type { TileInspectionInfo, TileInspectionRow } from '../systems/TileInspectionData';
+import { getUnitSpritePath } from '../utils/assetPaths';
+import type { TileInspectionInfo, TileInspectionRow, TileInspectionUnit } from '../systems/TileInspectionData';
 
 const DEFAULT_WIDTH = 300;
 
@@ -80,7 +81,16 @@ export class TileInspectorDialog {
     this.content = document.createElement('div');
     this.content.style.cssText = 'display: grid; gap: 12px; padding: 12px;';
 
-    this.root.append(this.header, this.content);
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes tile-unit-land { 50% { transform: translateY(-2px) scaleY(1.025); } }
+      @keyframes tile-unit-sea { 50% { transform: translateY(-3px) rotate(2deg); } }
+      @keyframes tile-unit-air { 50% { transform: translate(2px, -4px) rotate(-2deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        #tile-inspector-dialog .tile-unit-image { animation: none !important; }
+      }
+    `;
+    this.root.append(style, this.header, this.content);
     document.body.appendChild(this.root);
 
     this.header.addEventListener('mousedown', this.handleHeaderMouseDown);
@@ -120,7 +130,9 @@ export class TileInspectorDialog {
     this.titleEl.textContent = info.title;
     this.content.replaceChildren();
     for (const section of info.sections) {
-      this.content.append(this.createSection(section.heading, section.rows));
+      const block = this.createSection(section.heading, section.rows);
+      for (const unit of section.units ?? []) block.append(this.createUnit(unit));
+      this.content.append(block);
     }
   }
 
@@ -151,6 +163,44 @@ export class TileInspectorDialog {
       block.append(this.createRow(row));
     }
     return block;
+  }
+
+  private createUnit(unit: TileInspectionUnit): HTMLDivElement {
+    const card = document.createElement('div');
+    card.dataset.unitId = unit.id;
+    card.style.cssText = 'padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.08);';
+    const summary = document.createElement('div');
+    summary.style.cssText = 'display: flex; align-items: center; gap: 12px; padding: 0 10px 8px;';
+    const portrait = document.createElement('img');
+    portrait.src = getUnitSpritePath(unit.typeId);
+    portrait.alt = unit.name;
+    portrait.className = 'tile-unit-image';
+    portrait.style.cssText = `width: 72px; height: 72px; object-fit: contain; flex: 0 0 auto;
+      animation: tile-unit-${unit.motion} 2.8s ease-in-out infinite;`;
+    const details = document.createElement('div');
+    details.style.cssText = 'flex: 1; min-width: 0;';
+    const name = document.createElement('div');
+    name.textContent = unit.name;
+    name.style.cssText = 'font-size: 13px; font-weight: 700; overflow-wrap: anywhere;';
+    const health = document.createElement('div');
+    health.textContent = `Health ${unit.health} / ${unit.maxHealth}`;
+    health.style.cssText = 'font-size: 12px; margin: 6px 0;';
+    const ratio = clamp(unit.health / Math.max(1, unit.maxHealth), 0, 1);
+    const bar = document.createElement('div');
+    bar.setAttribute('role', 'meter');
+    bar.setAttribute('aria-label', `${unit.name} health`);
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', String(unit.maxHealth));
+    bar.setAttribute('aria-valuenow', String(clamp(unit.health, 0, unit.maxHealth)));
+    bar.style.cssText = 'height: 7px; border-radius: 4px; overflow: hidden; background: #482929;';
+    const fill = document.createElement('div');
+    fill.style.cssText = `height: 100%; width: ${ratio * 100}%; background: ${ratio > 0.5 ? '#79cc64' : ratio > 0.25 ? '#edbd54' : '#ee655f'};`;
+    bar.append(fill);
+    details.append(name, health, bar);
+    summary.append(portrait, details);
+    card.append(summary);
+    for (const row of unit.rows) card.append(this.createRow(row));
+    return card;
   }
 
   private createRow(row: TileInspectionRow): HTMLDivElement {

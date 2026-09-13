@@ -65,6 +65,15 @@ export class ProposalDialog {
       .setScrollFactor(0)
       .setVisible(false);
 
+    const consumeOverlay = (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
+      event.stopPropagation();
+      this.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
+      if (!pointer.isDown) this.worldInputGate.releasePointer(pointer.id);
+    };
+    this.overlay.on(Phaser.Input.Events.POINTER_DOWN, consumeOverlay);
+    this.overlay.on(Phaser.Input.Events.POINTER_UP, consumeOverlay);
+
     this.panel = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, PANEL_WIDTH, 10, 0x0f1824, 0.97))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
@@ -143,7 +152,7 @@ export class ProposalDialog {
     this.bodyText.setText(this.formatBody(proposal, fromName));
     this.panel.setStrokeStyle(2, accentColor, 0.95);
 
-    this.overlay.setVisible(true);
+    this.overlay.setVisible(true).setInteractive();
     this.panel.setVisible(true);
     this.titleText.setVisible(true);
     this.bodyText.setVisible(true);
@@ -161,7 +170,7 @@ export class ProposalDialog {
    */
   hide(): void {
     this.current = null;
-    this.overlay.setVisible(false);
+    this.overlay.setVisible(false).disableInteractive();
     this.panel.setVisible(false);
     this.titleText.setVisible(false);
     this.bodyText.setVisible(false);

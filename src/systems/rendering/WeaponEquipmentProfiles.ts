@@ -49,6 +49,16 @@ export const WEAPON_EQUIPMENT_PROFILES: Record<string, AmbientProfile> = {
     shots:[{kind:'shell',part:0,muzzle:[.119,.529],direction:[-.87,.49]}],
     note:'Cannon fires a bright muzzle blast and traveling shell; barrel recoils backward and returns over the grounded carriage.',
   },
+  trebuchet: {
+    // The shipped Trebuchet sprite depicts a field gun pointing upper-right.
+    effects:[],
+    parts:[barrel([[.464,.348],[.530,.296],[.566,.282],[.593,.296],
+      [.778,.130],[.803,.118],[.833,.127],[.841,.149],[.823,.177],
+      [.640,.340],[.625,.380],[.573,.417],[.533,.415],[.498,.388]],
+      [.815,.146],[.75,-.66])],
+    shots:[{kind:'shell',part:0,muzzle:[.815,.146],direction:[.75,-.66]}],
+    note:'The pictured field gun fires a shell with muzzle flame and synchronized backward barrel recoil, using the Cannon firing cycle; wheels, shield and carriage stay fixed.',
+  },
   anti_aircraft_gun: {
     effects:[],
     parts:[barrel([[.42,.414],[.476,.354],[.503,.317],[.559,.284],[.610,.268],

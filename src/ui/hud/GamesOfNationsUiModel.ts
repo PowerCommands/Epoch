@@ -268,7 +268,7 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
   };
 }
 
-function commitmentView(commitmentValue: number, availableValue: number): GamesCommitmentView {
+export function commitmentView(commitmentValue: number, availableValue: number): GamesCommitmentView {
   const commitment = whole(commitmentValue);
   const available = whole(availableValue);
   const affordable = commitment === 0 || available >= commitment;

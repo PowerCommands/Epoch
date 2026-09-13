@@ -307,15 +307,16 @@ export class CityView {
     this.root.append(panel);
     mount.append(this.root);
 
-    // Stop pointer events handled by the panel from bubbling up to `window`,
-    // where Phaser's InputManager would otherwise hit-test the screen-space UI
-    // sitting behind the overlay (e.g. leader portraits) and fire a parallel
-    // POINTER_UP — so clicking Close no longer also opens whatever is behind
-    // the city view. Only pointer events are consumed (Phaser uses those); the
-    // header drag relies on document-level mouse events, so they are left
-    // alone, and we never preventDefault so child button clicks still fire.
-    panel.addEventListener('pointerdown', this.stopPointerPropagation);
-    panel.addEventListener('pointerup', this.stopPointerPropagation);
+    // Phaser's MouseManager/TouchManager listen on window, including events
+    // targeting DOM overlays. Stopping pointer events alone does not stop the
+    // separate mouse events: they can press and release HUD buttons underneath
+    // before Close's click handler even runs. Consume all activation events at
+    // the panel, after child handlers, without preventing native button/input
+    // behavior. Mouse movement still reaches the document for header dragging.
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel',
+      'mousedown', 'mouseup', 'touchstart', 'touchend', 'touchcancel', 'click', 'dblclick']) {
+      panel.addEventListener(type, this.stopPanelInputPropagation);
+    }
 
     this.tooltipEl = document.createElement('div');
     this.tooltipEl.className = 'city-view-tooltip';
@@ -502,7 +503,9 @@ export class CityView {
     this.tooltipEl.style.display = 'none';
   }
 
-  private readonly stopPointerPropagation = (event: Event): void => {
+  private readonly stopPanelInputPropagation = (event: Event): void => {
+    // A release inside the panel no longer reaches the document drag listener.
+    if (event.type === 'mouseup') this.handleDocumentMouseUp();
     event.stopPropagation();
   };
 

@@ -1,3 +1,4 @@
+import { OFFSHORE_PROFILE } from './OffshorePlatformMotion';
 import type { BuildingActivity } from './BuildingActivities';
 import type { ResourceAnimal } from './ResourceAnimalMotion';
 import { FOOT_SOLDIER_PROFILES, weaponMotion, type WeaponRhythm, type WeaponShot } from './FootSoldierProfiles';
@@ -17,6 +18,9 @@ export type Point = [number, number];
 /** Original-art cutout. Every pixel in a part receives the same rigid transform.
  * Repairs are restricted to explicitly painted surfaces behind the moving part. */
 export interface ArtPart {
+  offshore?: 'boom' | 'load' | 'rope' | 'helicopter';
+  texture?: string;
+  textureRect?: [number, number, number, number];
   launch?: { delay: number; travel: Point };
   fall?: { delay: number; travel: Point };
   crane?: 'boom' | 'load' | 'rope';
@@ -29,7 +33,7 @@ export interface ArtPart {
   repairs?: { polygon: Point[]; offset: Point }[];
 }
 export interface TrackBelt { path: Point[]; width: number; links: number; period: number; }
-export interface AmbientProfile { effects: Emitter[]; buildingActivity?: BuildingActivity; cropWind?: { strength: number; root: number }; animal?: ResourceAnimal; polarBearWalk?: boolean; school?: boolean; bombs?: boolean; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; tracks?: TrackBelt[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
+export interface AmbientProfile { hideBase?: boolean; offshore?: boolean; effects: Emitter[]; buildingActivity?: BuildingActivity; cropWind?: { strength: number; root: number }; animal?: ResourceAnimal; polarBearWalk?: boolean; school?: boolean; bombs?: boolean; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; tracks?: TrackBelt[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
 const e = (kind: Activity, x: number, y: number, size = 1, color?: number, period?: number): Emitter => ({kind,x,y,size,color,period});
 const j = (x: number, y: number, radius: number, dx: number, dy: number, rhythm: Joint['rhythm'] = 'idle'): Joint => ({x,y,radius,dx,dy,rhythm});
 const p = (...effects: Emitter[]): AmbientProfile => ({effects});
@@ -90,7 +94,7 @@ export const IMPROVEMENT_AMBIENT: Record<string, AmbientProfile> = {
   fishing_boats: {effects: [e('water',.42,.75,.8),e('water',.73,.52,.5)],
     parts:[{feature:'foreground sailboat, including rigid mast and hull',polygon:[[.12,.07],[.25,.04],[.40,.12],[.47,.35],[.57,.56],[.56,.69],[.45,.76],[.27,.67],[.16,.51]],pivot:[.36,.62],angle:.013,dy:.01,rhythm:'sea'},
     {feature:'background fishing boat',polygon:[[.55,.035],[.84,.08],[.89,.19],[.84,.42],[.88,.46],[.74,.52],[.61,.45],[.53,.32]],pivot:[.72,.4],angle:.014,dy:.009,rhythm:'sea'}],note:'Two independent rigid boats; painted water and wakes remain behind.'},
-  offshore_platform: p(e('water',.49,.78,.7),e('light',.56,.29,.65,0xff9a63)),
+  offshore_platform: OFFSHORE_PROFILE,
   archaeological_dig: p(e('dust',.48,.56,.45,0xcbbb99,13),e('dust',.62,.58,.35,0xcbbb99,19)),
   underwater_archaeological_site: p(e('bubbles',.55,.77,.65),e('water',.5,.8,.65),e('flag',.64,.16,.5,0xe9d9b9)),
 };
@@ -246,8 +250,16 @@ UNIT_AMBIENT.scout_boat = {
 units('worker_action worker_action_improvement workboat_action work_boat_action_improvement',{
   effects:[],note:'These files depict construction signs, not workers/boats. Keep the sign stationary.'});
 UNIT_AMBIENT.embarked_boat = {effects:[e('water',.5,.68,.7)],float:.026,note:'Small side-profile launch with pronounced rigid hull bobbing for embarked land units.'};
-units('agent spy atomic_bomb guided_missile nuclear_missile leaders', {effects: [], note: 'Covert portraits, stored ordnance and UI symbol remain still.'});
+units('agent atomic_bomb guided_missile nuclear_missile leaders', {effects: [], note: 'Covert portraits, stored ordnance and UI symbol remain still.'});
 
+UNIT_AMBIENT.spy = {
+  effects: [], hideBase: true,
+  parts: [{ feature: 'spy firing stance recoils as one rigid silhouette, keeping pistol, wrist and shoulder connected',
+    polygon: [[0,0],[1,0],[1,1],[0,1]],
+    pivot:[.55,.65], angle:.018, dx:.012, dy:-.009, rhythm:'recoil'}],
+  shots:[{kind:'pistol',part:0,muzzle:[.232,.303],direction:[-1,-.12]}],
+  note:'Single pistol shots: brief muzzle flame, drifting smoke and a synchronized rigid weapon/hand recoil with recovery.'
+};
 Object.assign(UNIT_AMBIENT, FOOT_SOLDIER_PROFILES);
 Object.assign(UNIT_AMBIENT, NAVAL_PROFILES);
 Object.assign(UNIT_AMBIENT, WEAPON_EQUIPMENT_PROFILES);

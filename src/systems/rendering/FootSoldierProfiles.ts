@@ -1,7 +1,7 @@
 import type { AmbientProfile, ArtPart, Point } from './AmbientProfiles';
 
 export type WeaponRhythm = 'thrust' | 'slash' | 'draw' | 'recoil' | 'aim' | 'throw' | 'burst';
-export interface WeaponShot { kind: 'arrow' | 'rifle' | 'rocket' | 'stone' | 'burst' | 'shell'; part: number; muzzle: Point; direction: Point; }
+export interface WeaponShot { kind: 'pistol' | 'arrow' | 'rifle' | 'rocket' | 'stone' | 'burst' | 'shell'; part: number; muzzle: Point; direction: Point; }
 export const WEAPON_PERIOD = 2.6;
 export const WEAPON_RELEASE = .45;
 export const BURST_INTERVAL = .16;

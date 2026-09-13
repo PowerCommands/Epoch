@@ -1,3 +1,4 @@
+import { CRANE_LOAD, offshorePose } from './OffshorePlatformMotion';
 import { drawBuildingActivity, stoneCranePose } from './BuildingActivities';
 import { resourceAnimalOffset } from './ResourceAnimalMotion';
 import { CONSTRUCTION_AMBIENT } from './ConstructionVisual';
@@ -287,10 +288,26 @@ export class AmbientSprites {
         this.drawEffect(g,effect,point.x,point.y,Math.min(Math.abs(w),Math.abs(h)),t,effectSeed,(effect.kind==='compass'?1:detail)*s.alpha);
       }
       if(profile.rotors?.length || profile.parts?.length) this.drawRotors(b,t,detail);
+      if(profile.offshore && b.drawing && !s.isTinted) this.drawOffshoreActivity(g,b,t,detail);
       if(profile.buildingActivity) drawBuildingActivity(g,s,profile.buildingActivity,t,b.seed,detail);
       if(profile.bombs || profile.parts?.some(part=>part.launch)) this.drawAircraftWeapons(g,b,t,detail);
       if(profile.shots?.length && b.drawing && !s.isTinted) this.drawWeaponShots(g,b,t,detail);
       if(profile.tracks?.length && b.drawing && !s.isTinted) this.drawTracks(g,b,t,detail);
+    }
+  }
+  private drawOffshoreActivity(g: Phaser.GameObjects.Graphics,b: Binding,t:number,detail:number): void {
+    const s=b.sprite,pose=offshorePose(t,b.seed),matrix=s.getWorldTransformMatrix(this.worldMatrix,this.parentMatrix);
+    const point=(x:number,y:number)=>matrix.transformPoint((x-s.originX)*s.width,(y-s.originY)*s.height);
+    const size=Math.abs(s.displayWidth),tip=point(...pose.tip),load=point(pose.load[0],pose.load[1]-.017);
+    g.lineStyle(Math.max(.6,size*.004),0x272525,s.alpha).lineBetween(tip.x,tip.y,load.x,load.y);
+    if(!pose.helicopterVisible) return;
+    // Fast rotor sweep uses the same aircraft offset as its original-art cutout.
+    const hub:[number,number]=[.855+pose.flight[0],.412+pose.flight[1]];
+    const angle=t*36+b.seed*6;
+    for(let blade=0;blade<2;blade++) {
+      const a=angle+blade*Math.PI/2,dx=Math.cos(a)*.105,dy=Math.sin(a)*.031;
+      const start=point(hub[0]-dx,hub[1]-dy),end=point(hub[0]+dx,hub[1]+dy);
+      g.lineStyle(Math.max(.6,size*.004),0xd7dde0,s.alpha*.8*detail).lineBetween(start.x,start.y,end.x,end.y);
     }
   }
   private drawWeaponShots(g: Phaser.GameObjects.Graphics,b: Binding,t: number,detail: number): void {
@@ -301,7 +318,7 @@ export class AmbientSprites {
       const phase=weaponPhase(t,seed);
       const elapsed=shot.kind==='burst'?(burstAge(t,seed)??-1):(phase-WEAPON_RELEASE)*WEAPON_PERIOD;
       const age=Math.max(0,elapsed);
-      const duration=shot.kind==='stone'?1.05:shot.kind==='shell'?.65:shot.kind==='burst'?.14:shot.kind==='arrow'?.48:.36;
+      const duration=shot.kind==='pistol'?.8:shot.kind==='stone'?1.05:shot.kind==='shell'?.65:shot.kind==='burst'?.14:shot.kind==='arrow'?.48:.36;
       const loaded=shot.kind==='stone' && phase<WEAPON_RELEASE;
       if((elapsed < -1e-9 && !loaded) || age>duration) continue;
       // The stone leaves the cup at release and no longer follows its recovery.
@@ -337,15 +354,30 @@ export class AmbientSprites {
         g.lineBetween(x,y,x-dx*scale*.022+nx*scale*.014,y-dy*scale*.022+ny*scale*.014);
         g.lineBetween(x,y,x-dx*scale*.022-nx*scale*.014,y-dy*scale*.022-ny*scale*.014);
       } else {
-        if(age<(shot.kind==='burst'?.085:.15)) {
-          const length=scale*(shot.kind==='shell'?.22:shot.kind==='burst'?.18:shot.kind==='rocket'?.14:.10)*(1-age*.9),width=scale*(shot.kind==='shell'?.055:shot.kind==='burst'?.04:.025);
+        if(age<(shot.kind==='pistol'?.10:shot.kind==='burst'?.085:.15)) {
+          const length=scale*(shot.kind==='shell'?.22:shot.kind==='burst'?.18:shot.kind==='rocket'?.14:shot.kind==='pistol'?.12:.10)*(1-age*.9),width=scale*(shot.kind==='shell'?.055:shot.kind==='burst'?.04:.025);
+          if(shot.kind==='pistol') {
+            // Irregular orange tongues surround the short, white-hot muzzle core.
+            g.fillStyle(0xff9c28,alpha*.18).fillCircle(muzzle.x,muzzle.y,scale*.055);
+            for(let ray=0;ray<5;ray++) {
+              const spread=(ray-2)*.34,rx=dx*Math.cos(spread)-dy*Math.sin(spread),ry=dx*Math.sin(spread)+dy*Math.cos(spread);
+              const reach=scale*(ray===2?.15:ray%2?.082:.054)*(1-age*2);
+              g.fillStyle(ray%2?0xffc64a:0xff8a1b,alpha*.96);
+              g.fillTriangle(muzzle.x+nx*width,muzzle.y+ny*width,muzzle.x+rx*reach,muzzle.y+ry*reach,muzzle.x-nx*width,muzzle.y-ny*width);
+            }
+            g.fillStyle(0xfff8c7,alpha).fillCircle(muzzle.x+dx*scale*.012,muzzle.y+dy*scale*.012,scale*.023);
+            g.fillStyle(0xffffff,alpha).fillCircle(muzzle.x,muzzle.y,scale*.013);
+          } else {
           g.fillStyle(0xffad35,alpha*.9);
           g.fillTriangle(muzzle.x+nx*width,muzzle.y+ny*width,muzzle.x+dx*length,muzzle.y+dy*length,muzzle.x-nx*width,muzzle.y-ny*width);
           g.fillStyle(0xfff3c2,alpha).fillCircle(muzzle.x+dx*scale*.025,muzzle.y+dy*scale*.025,scale*.016);
+          }
         }
         const q=age/duration;
-        g.fillStyle(0xd8d0b9,(1-q)*alpha*.48);
-        g.fillCircle(muzzle.x+dx*q*scale*.12,muzzle.y+dy*q*scale*.12-q*scale*.025,scale*(.013+q*.028));
+        if(shot.kind!=='pistol' || age>=.10) {
+          g.fillStyle(0xd8d0b9,(1-q)*alpha*.48);
+          g.fillCircle(muzzle.x+dx*q*scale*.12,muzzle.y+dy*q*scale*.12-q*scale*.025,scale*(.013+q*.028));
+        }
         if(shot.kind==='shell') {
           const origin=local(shot.muzzle[0],shot.muzzle[1],ambientMotion(t-age,seed,part.rhythm));
           const travel=q*scale*.95;
@@ -434,6 +466,7 @@ export class AmbientSprites {
       }
       m.buildOrderedIndices(0);
     }
+    if(b.profile!.hideBase) for(let i=0;i<(b.grid+1)**2*4;i+=4) {m.vertices[i]=0;m.vertices[i+1]=0;}
     for(let n=0;n<count;n++) {
       const part=parts?.[n], r=part?{x:part.pivot[0],y:part.pivot[1],period:1}:rotors[n];
       let motion=part?ambientMotion(t,(b.seed+(part.phase??n*.173))%1,part.rhythm):0;
@@ -457,6 +490,12 @@ export class AmbientSprites {
         if(part.crane==='boom') angle=pose.angle;
         if(part.crane==='load') {moveX=.17*(Math.cos(pose.angle)-1);moveY=.04*Math.sin(pose.angle)-pose.lift*.14;}
       }
+      if(part?.offshore) {
+        const pose=offshorePose(t,b.seed);
+        if(part.offshore==='boom') angle=pose.angle;
+        if(part.offshore==='load') {moveX=pose.load[0]-CRANE_LOAD[0];moveY=pose.load[1]-CRANE_LOAD[1];}
+        if(part.offshore==='helicopter') {moveX=pose.flight[0];moveY=pose.flight[1];}
+      }
       if(part?.link && parts) {
         const {hand,root,elbow,bone}=part.link,parent=parts[part.link.part];
         let pm=ambientMotion(t,(b.seed+(parent.phase??part.link.part*.173))%1,parent.rhythm);
@@ -478,7 +517,7 @@ export class AmbientSprites {
         }
       }
       for(let k=0;k<4;k++) {
-        const hidden=part?.crane==='rope'||(!!part?.launch && launchAge>.9)||(!!part?.fall && fallAge>1.2);
+        const hidden=part?.offshore==='rope'||(part?.offshore==='helicopter'&&!offshorePose(t,b.seed).helicopterVisible)||part?.crane==='rope'||(!!part?.launch && launchAge>.9)||(!!part?.fall && fallAge>1.2);
         const u=hidden?r.x:k%2,v=hidden?r.y:Math.floor(k/2),dx=(u-r.x)*s.width,dy=(v-r.y)*s.height;
         const i=((b.grid+1)**2+n*4+k)*4;
         const aspect=part?.crane==='boom'?.4:part?.spin?.aspect??1;
@@ -502,7 +541,7 @@ export class AmbientSprites {
         // cell once and apply an affine transform for each original-art cutout.
         const count = b.profile.parts?.length ?? b.profile.rotors!.length;
         const cells = count + 1, cell = source.width / cells;
-        ctx.drawImage(source, 0, 0, cell, source.height,
+        if(!b.profile!.hideBase) ctx.drawImage(source, 0, 0, cell, source.height,
           -sprite.originX * sprite.width, vertices[1], sprite.width, sprite.height);
         for (let n = 0; n < count; n++) {
           const i = ((b.grid + 1) ** 2 + n * 4) * 4;
@@ -548,6 +587,13 @@ export class AmbientSprites {
       g.beginPath();points.forEach(([x,y],i)=>i?g.lineTo(x*cell,y*cell):g.moveTo(x*cell,y*cell));g.closePath();
     };
     for(const [n,part] of parts.entries()) {
+      if(part.texture && part.textureRect) {
+        if(this.scene.textures.exists(part.texture)) {
+          const [x,y,w,h]=part.textureRect;
+          ctx.drawImage(this.scene.textures.get(part.texture).getSourceImage() as HTMLImageElement,(n+1+x)*cell,y*cell,w*cell,h*cell);
+        }
+        continue;
+      }
       // The mask follows the painted feature, never a radial torso influence.
       ctx.save();ctx.translate((n+1)*cell,0);path(ctx,part.polygon);ctx.clip();ctx.drawImage(source,0,0,cell,cell);ctx.restore();
       ctx.save();path(ctx,part.polygon);ctx.clip();ctx.clearRect(0,0,cell,cell);

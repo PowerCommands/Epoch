@@ -102,6 +102,14 @@ export class WorldCouncilContributionDialog {
       .setDepth(DEPTH)
       .setScrollFactor(0)
       .setVisible(false);
+    const consumeOverlay = (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
+      event.stopPropagation();
+      this.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
+      if (!pointer.isDown) this.worldInputGate.releasePointer(pointer.id);
+    };
+    this.overlay.on(Phaser.Input.Events.POINTER_DOWN, consumeOverlay);
+    this.overlay.on(Phaser.Input.Events.POINTER_UP, consumeOverlay);
     this.panel = addOwned(new Phaser.GameObjects.Graphics(scene))
       .setDepth(DEPTH + 1)
       .setScrollFactor(0)
@@ -320,6 +328,8 @@ export class WorldCouncilContributionDialog {
 
   private setVisible(visible: boolean): void {
     this.overlay.setVisible(visible);
+    if (visible) this.overlay.setInteractive();
+    else this.overlay.disableInteractive();
     this.panel.setVisible(visible);
     this.valueCard.setVisible(visible);
     this.titleText.setVisible(visible);
@@ -383,13 +393,16 @@ export class WorldCouncilContributionDialog {
       button.hovered = false;
       this.drawButton(button);
     });
-    hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+    hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
       this.worldInputGate.claimPointer(pointer.id);
       consumePointerEvent(pointer);
     });
-    hitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer) => {
+    hitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
       this.worldInputGate.claimPointer(pointer.id);
       consumePointerEvent(pointer);
+      this.worldInputGate.releasePointer(pointer.id);
       spec.onClick();
     });
     return button;

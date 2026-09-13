@@ -3,6 +3,7 @@ import { getBuildingById } from '../data/buildings';
 import { getImprovementById } from '../data/improvements';
 import { getResourceDisplayName } from '../data/resources';
 import { getWonderById } from '../data/wonders';
+import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import type { MapData } from '../types/map';
 import type { CityManager } from './CityManager';
@@ -20,10 +21,21 @@ export interface TileInspectionRow {
   warning?: boolean;
 }
 
+export interface TileInspectionUnit {
+  id: string;
+  typeId: string;
+  name: string;
+  health: number;
+  maxHealth: number;
+  motion: 'land' | 'sea' | 'air';
+  rows: TileInspectionRow[];
+}
+
 /** A titled group of rows. */
 export interface TileInspectionSection {
   heading: string;
   rows: TileInspectionRow[];
+  units?: TileInspectionUnit[];
 }
 
 /** Plain, presentation-ready snapshot of everything on one tile. */
@@ -148,26 +160,44 @@ export function buildTileInspection(
   sections.push({ heading: 'Territory', rows: territoryRows });
 
   // ── Units ─────────────────────────────────────────────────────────────────
-  const units = unitManager.getUnitsAt(x, y);
-  if (units.length > 0) {
-    const unitRows: TileInspectionRow[] = [];
-    for (const unit of units) {
-      const owner = nationName(nationManager, unit.ownerId) ?? unit.ownerId;
-      const nation = nationManager.getNation(unit.ownerId);
-      unitRows.push({ label: 'Type', value: unit.unitType.name });
-      unitRows.push({
-        label: 'Health',
-        value: `${unit.health} / ${unit.unitType.baseHealth}`,
-      });
-      unitRows.push({ label: 'Owner', value: owner, color: nation?.color });
-      unitRows.push({
-        label: 'Movement',
-        value: `${unit.movementPoints} / ${unit.maxMovementPoints}`,
-      });
-      unitRows.push({ label: 'Status', value: unit.actionStatus });
+  // Cargo is deliberately absent from the collision/grid lookup. Air bases
+  // have their own authoritative occupancy, independent of that grid as well.
+  const occupants = new Map<string, { unit: Unit; location?: string }>();
+  const addUnit = (unit: Unit, location?: string): void => {
+    if (occupants.has(unit.id)) {
+      if (location) occupants.get(unit.id)!.location = location;
+      return;
     }
-    sections.push({ heading: units.length > 1 ? `Units (${units.length})` : 'Unit', rows: unitRows });
+    occupants.set(unit.id, { unit, location });
+    for (const cargo of unitManager.getCargoUnitsForTransport(unit)) {
+      addUnit(cargo, `Aboard ${unit.name}`);
+    }
+  };
+  for (const unit of unitManager.getUnitsAt(x, y)) addUnit(unit);
+  const airOperations = unitManager.airOperations;
+  for (const site of airOperations?.allSites() ?? []) {
+    if (site.x !== x || site.y !== y) continue;
+    for (const aircraft of airOperations!.aircraftAt(site.base)) {
+      addUnit(aircraft, site.base.kind === 'carrier' ? `Aboard ${site.name}` : site.name);
+    }
   }
+  const units: TileInspectionUnit[] = [...occupants.values()].map(({ unit, location }) => {
+    const nation = nationManager.getNation(unit.ownerId);
+    const rows: TileInspectionRow[] = [
+      { label: 'Type', value: unit.unitType.name },
+      { label: 'Owner', value: nationName(nationManager, unit.ownerId) ?? unit.ownerId, color: nation?.color },
+      { label: 'Movement', value: `${unit.movementPoints} / ${unit.maxMovementPoints}` },
+      { label: 'Status', value: unit.actionStatus },
+    ];
+    if (location) rows.push({ label: 'Stationed', value: location });
+    return {
+      id: unit.id, typeId: unit.unitType.id, name: unit.name,
+      health: unit.health, maxHealth: unit.unitType.baseHealth,
+      motion: unit.unitType.category === 'air' ? 'air' : unit.unitType.isNaval ? 'sea' : 'land',
+      rows,
+    };
+  });
+  sections.push({ heading: 'Units', rows: units.length ? [] : [{ label: 'Units', value: 'None' }], units });
 
   // ── Buildings / improvements / wonders ──────────────────────────────────────
   const structureRows: TileInspectionRow[] = [];

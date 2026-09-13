@@ -51,7 +51,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | pasture | Two tiny cattle head regions inside the fence; no terrain, shed or fence deformation. |
 | oil_well | Cut-out walking beam and horsehead rock rigidly about the bearing; A-frame, tanks and foundation unchanged. |
 | fishing_boats | Two separately cut boats heave and roll slightly; each mast/hull moves rigidly, background water fixed. |
-| offshore_platform | Water at pylons and restrained derrick signal; platform stays fixed. |
+| offshore_platform | Sixteen-second loop: crane slews counterclockwise, lowers and recovers its suspended load while a helicopter approaches, lands on the helipad, waits and departs. Fixed platform, rotating rotor and vertical cable. |
 | archaeological_dig | Intermittent dust at the excavation and exposed work surface; no invented people on columns. |
 | underwater_archaeological_site | Diver bubbles and ripples, small painted marker pennant; pontoon/cranes stay fixed. |
 
@@ -131,7 +131,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | workboat_action | These files depict construction signs, not workers/boats. Keep the sign stationary. |
 | work_boat_action_improvement | These files depict construction signs, not workers/boats. Keep the sign stationary. |
 | agent | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
-| spy | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
+| spy | Repeating pistol shot with brief white-hot amber muzzle flame, drifting smoke, and small synchronized rigid recoil of the firing stance. No baked flame in the rest sprite. |
 | stealth_bomber | Twin blue-white afterburners and recurring three-bomb drops that accelerate, shrink and fade below the rigid airframe. Also animated on the airbase representative. |
 | atomic_bomb | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
 | guided_missile | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |

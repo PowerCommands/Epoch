@@ -55,6 +55,14 @@ export class WorldCouncilFoundationDialog {
       .setDepth(DEPTH)
       .setScrollFactor(0)
       .setVisible(false);
+    const consumeOverlay = (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData): void => {
+      event.stopPropagation();
+      this.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
+      if (!pointer.isDown) this.worldInputGate.releasePointer(pointer.id);
+    };
+    this.overlay.on(Phaser.Input.Events.POINTER_DOWN, consumeOverlay);
+    this.overlay.on(Phaser.Input.Events.POINTER_UP, consumeOverlay);
     this.panel = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, PANEL_WIDTH, 10, 0x101923, 0.98))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
@@ -159,6 +167,8 @@ export class WorldCouncilFoundationDialog {
 
   private setVisible(visible: boolean): void {
     this.overlay.setVisible(visible);
+    if (visible) this.overlay.setInteractive();
+    else this.overlay.disableInteractive();
     this.panel.setVisible(visible);
     this.titleText.setVisible(visible);
     this.bodyText.setVisible(visible);
@@ -193,13 +203,16 @@ export class WorldCouncilFoundationDialog {
       .setDepth(DEPTH + 4)
       .setScrollFactor(0)
       .setVisible(false);
-    hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+    hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
       this.worldInputGate.claimPointer(pointer.id);
       consumePointerEvent(pointer);
     });
-    hitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer) => {
+    hitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
       this.worldInputGate.claimPointer(pointer.id);
       consumePointerEvent(pointer);
+      this.worldInputGate.releasePointer(pointer.id);
       onClick();
     });
     return { background, text, hitArea, onClick };

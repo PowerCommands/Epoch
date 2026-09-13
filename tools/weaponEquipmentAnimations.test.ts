@@ -20,7 +20,7 @@ test('each machine gun round starts with recoil and recovers before the next sho
 });
 
 test('vehicle and artillery barrels recoil opposite their shot direction',()=>{
-  for(const id of ['cannon','anti_aircraft_gun','gatling_gun','landship','tank','modern_armor']) {
+  for(const id of ['cannon','trebuchet','anti_aircraft_gun','gatling_gun','landship','tank','modern_armor']) {
     const p=WEAPON_EQUIPMENT_PROFILES[id],shot=p.shots![0],part=p.parts![shot.part];
     assert.equal(AMBIENT_PROFILES.unit[id],p);
     const along=(part.dx??0)*shot.direction[0]+(part.dy??0)*shot.direction[1];
