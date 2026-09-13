@@ -148,6 +148,8 @@ test('a replacement may use the existing plant tile when no other tile is free',
   addResource(harness, 'natural_gas', 19);
   construct(harness, 'city_a', 'coal_power_plant');
   const city = harness.cityManager.getCity('city_a')!;
+  // Physical plants occupy ordinary territory outside the settlement cluster.
+  city.tileX = 2;
   const placement = new BuildingPlacementSystem();
 
   assert.deepEqual(

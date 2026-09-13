@@ -124,6 +124,7 @@ export function razeCapturedCity(city: City, deps: RazeCityDeps): RazeCityResult
     tile.improvementId = undefined;
     tile.improvementOwnerId = undefined;
     tile.improvementConstruction = undefined;
+    tile.urbanSlot = undefined;
     tile.buildingId = undefined;
     tile.buildingBroken = undefined;
     tile.buildingConstruction = undefined;

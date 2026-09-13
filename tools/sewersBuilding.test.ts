@@ -1,3 +1,4 @@
+import { initializeUrbanDevelopment } from '../src/systems/UrbanDevelopment.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -44,6 +45,7 @@ function makeHarness() {
   ));
   const mapData: MapData = { width: 3, height: 3, tileSize: 1, tiles };
   city.ownedTileCoords = tiles.flat().map(({ x, y }) => ({ x, y }));
+  initializeUrbanDevelopment(city, mapData);
   cityManager.addCity(city);
   const turnManager = new TurnManager(nationManager);
   const happiness = new HappinessSystem(nationManager, cityManager);
@@ -151,7 +153,7 @@ test('save/load preserves constructed Sewers and its capacity effect', () => {
     gridSystem: new HexGridSystem(),
     wonderSystem: { getCompletedWonders: () => [] },
   } as unknown as SaveLoadContext);
-  assert.ok(saved.cities[0].buildings.includes(SEWERS.id));
+  assert.ok(saved.cities[0].buildings.some(entry => entry.buildingId === SEWERS.id && !entry.broken));
 
   const restored = makeHarness();
   const applyCitiesAndProduction = (SaveLoadService as unknown as {

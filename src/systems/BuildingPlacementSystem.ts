@@ -1,3 +1,4 @@
+import { getUrbanSlots, getUrbanSlotAt, getUrbanRequirement, isAssignedUrbanBuilding } from './UrbanDevelopment';
 import { getBuildingById } from '../data/buildings';
 import { isPowerPlantBuilding } from '../data/powerPlants';
 import type { BuildingType } from '../entities/Building';
@@ -18,10 +19,11 @@ export class BuildingPlacementSystem {
   private state: BuildingPlacementState | null = null;
 
   startPlacement(city: City, buildingId: string, mapData: MapData): boolean {
+    this.cancelPlacement();
     const building = getBuildingById(buildingId);
     // An upgrade's predecessor already determines its physical destination.
     // It must never expose the ordinary placement cursor.
-    if (!building || building.placement === 'city' || this.isAutomaticUpgrade(city, building, mapData)) return false;
+    if (!building || isAssignedUrbanBuilding(city, building.id) || building.placement === 'city' || this.isAutomaticUpgrade(city, building, mapData)) return false;
 
     const validCoords = this.getValidPlacementCoords(city, building, mapData);
     if (validCoords.length === 0) return false;
@@ -72,6 +74,18 @@ export class BuildingPlacementSystem {
     const def = typeof building === 'string' ? getBuildingById(building) : building;
     if (!def || def.placement === 'city') return [];
 
+    if (isAssignedUrbanBuilding(city, def.id)) {
+      const slot = getUrbanSlots(city).find(s => s.buildingId === def.id)!;
+      const tile = mapData.tiles[slot.y]?.[slot.x];
+      return tile?.urbanSlot?.cityId === city.id && tile.urbanSlot.buildingId === def.id
+        && city.ownedTileCoords.some(c => c.x === slot.x && c.y === slot.y)
+        && tile.ownerId === city.ownerId
+        && (def.placement !== 'water' || this.isTerrainCompatible(tile, def))
+        && !tile.buildingId && !tile.improvementId && !tile.improvementConstruction
+        && !tile.wonderId && !tile.wonderConstruction
+        ? [{ x: slot.x, y: slot.y }] : [];
+    }
+
     if (def.upgradesFrom) {
       const predecessorTile = this.findUpgradePredecessorTile(city, def, mapData);
       if (predecessorTile) return [{ x: predecessorTile.x, y: predecessorTile.y }];
@@ -82,7 +96,8 @@ export class BuildingPlacementSystem {
       .map((coord) => mapData.tiles[coord.y]?.[coord.x])
       .filter((tile): tile is Tile => tile !== undefined)
       .filter((tile) => tile.x !== city.tileX || tile.y !== city.tileY)
-      .filter((tile) => !def.requiresEmptyTile || tile.ownerId === city.ownerId)
+      .filter((tile) => !getUrbanSlotAt(city, tile))
+      .filter((tile) => tile.ownerId === city.ownerId)
       .filter((tile) => this.isTileValidForPlacement(tile, def))
       .map((tile) => ({ x: tile.x, y: tile.y }))
       .sort((a, b) => {
@@ -101,7 +116,7 @@ export class BuildingPlacementSystem {
     for (const coord of city.ownedTileCoords) {
       if (coord.x === city.tileX && coord.y === city.tileY) continue;
       const tile = mapData.tiles[coord.y]?.[coord.x];
-      if (tile?.buildingId === building.upgradesFrom) return tile;
+      if (tile?.buildingId === building.upgradesFrom && this.isUrbanDestinationAllowed(city, tile, building)) return tile;
     }
     return null;
   }
@@ -117,10 +132,20 @@ export class BuildingPlacementSystem {
     mapData: MapData,
   ): Tile | null {
     if (building.placement === 'city') return null;
+    if (isAssignedUrbanBuilding(city, building.id)) {
+      const [coord] = this.getValidPlacementCoords(city, building, mapData);
+      if (!coord) return null;
+      const tile = mapData.tiles[coord.y][coord.x];
+      tile.buildingId = building.id;
+      tile.buildingBroken = undefined;
+      tile.buildingConstruction = undefined;
+      return tile;
+    }
     if (!this.isAutomaticUpgrade(city, building, mapData)) {
       const reservedTile = this.findReservedTile(city.id, building.id, mapData);
+      if (reservedTile && !this.isUrbanDestinationAllowed(city, reservedTile, building)) return null;
       if (reservedTile?.x === city.tileX && reservedTile.y === city.tileY) return null;
-      if (building.requiresEmptyTile) {
+      if (building.requiresEmptyTile || building.allowedTerrains) {
         const tile = this.findReservedTile(city.id, building.id, mapData);
         if (!tile || tile.ownerId !== city.ownerId
           || !city.ownedTileCoords.some(coord => coord.x === tile.x && coord.y === tile.y)) return null;
@@ -130,7 +155,7 @@ export class BuildingPlacementSystem {
 
     const tile = this.findUpgradePredecessorTile(city, building, mapData);
     if (!tile) return null;
-    if (!this.isTerrainCompatible(tile, building)) {
+    if (!tile.urbanSlot && !this.isTerrainCompatible(tile, building)) {
       console.warn(
         `[BuildingPlacement] Upgrade configuration mismatch: ${building.id} inherits `
         + `${building.upgradesFrom}'s incompatible tile at ${tile.x},${tile.y}.`,
@@ -153,7 +178,8 @@ export class BuildingPlacementSystem {
     if (coord.x === city.tileX && coord.y === city.tileY) return { status: 'invalid' };
 
     const key = this.getCoordKey(coord.x, coord.y);
-    const validSet = new Set(this.state.validCoords.map((entry) => this.getCoordKey(entry.x, entry.y)));
+    const validSet = new Set(this.getValidPlacementCoords(city, this.state.buildingId, mapData)
+      .map((entry) => this.getCoordKey(entry.x, entry.y)));
     if (!validSet.has(key)) return { status: 'invalid' };
 
     const tile = mapData.tiles[coord.y]?.[coord.x];
@@ -184,11 +210,12 @@ export class BuildingPlacementSystem {
     mapData: MapData,
   ): Tile | null {
     const tile = this.findReservedTile(cityId, buildingId, mapData);
-    if (!tile) return null;
+    if (!tile || tile.urbanSlot) return null;
 
     const def = getBuildingById(buildingId);
     // No building may complete onto a tile that now carries an improvement.
     if (tile.improvementId || tile.improvementConstruction) return null;
+    if (def?.allowedTerrains && !this.isTerrainCompatible(tile, def)) return null;
     if (def?.requiresEmptyTile && (!this.isTerrainCompatible(tile, def) || tile.resourceId || tile.buildingId)) return null;
     tile.buildingConstruction = undefined;
     tile.buildingId = buildingId;
@@ -201,6 +228,10 @@ export class BuildingPlacementSystem {
     building: BuildingType,
     mapData: MapData,
   ): { tileX: number; tileY: number } | undefined {
+    if (isAssignedUrbanBuilding(city, building.id)) {
+      const [coord] = this.getValidPlacementCoords(city, building, mapData);
+      return coord ? { tileX: coord.x, tileY: coord.y } : undefined;
+    }
     if (building.placement === 'city' || this.isAutomaticUpgrade(city, building, mapData)) return undefined;
     const [coord] = this.getValidPlacementCoords(city, building, mapData);
     if (!coord) return undefined;
@@ -235,7 +266,17 @@ export class BuildingPlacementSystem {
     return buildingId;
   }
 
+  /** Only the assigned investment (or its normal upgrade) may use this slot. */
+  private isUrbanDestinationAllowed(city: City, tile: Tile, building: BuildingType): boolean {
+    const slot = getUrbanSlotAt(city, tile);
+    if (!slot && !tile.urbanSlot) return true;
+    const requirement = getUrbanRequirement(building.id);
+    return !!slot && slot.buildingId === requirement
+      && (!tile.urbanSlot || (tile.urbanSlot.cityId === city.id && tile.urbanSlot.buildingId === requirement));
+  }
+
   private isTileValidForPlacement(tile: Tile, building: BuildingType): boolean {
+    if (tile.urbanSlot) return false;
     if (building.placement === 'city') return false;
     // No building may be placed where an improvement is finished or under construction.
     if (tile.improvementId || tile.improvementConstruction) return false;

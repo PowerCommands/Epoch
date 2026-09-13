@@ -37,7 +37,7 @@ import type { AIVictoryFocusState } from './aiVictoryFocus';
  * so future changes can be detected and rejected cleanly.
  */
 
-export const SAVED_GAME_VERSION = 4 as const;
+export const SAVED_GAME_VERSION = 7 as const;
 
 export interface SavedProducible {
   aircraftBase?: import('../entities/Unit').AircraftBase;
@@ -54,7 +54,7 @@ export interface SavedProducible {
 
 export interface SavedBuilding {
   buildingId: string;
-  broken?: boolean;
+  broken: boolean;
 }
 
 export interface SavedWonder {
@@ -135,6 +135,7 @@ export interface SavedConsolidationState {
 }
 
 export interface SavedCity {
+  urbanDevelopment: import('../entities/City').UrbanDevelopmentLayout;
   id: string;
   name: string;
   ownerId: string;
@@ -166,9 +167,7 @@ export interface SavedCity {
   integrationLastProcessedRound?: number;
   /** Age of the city's canonical power plant. Optional for pre-system saves. */
   powerPlantAge?: number;
-  // Backward-compatible: old saves store plain building ids; newer saves may
-  // store objects carrying broken state. Strings load as working (not broken).
-  buildings: Array<string | SavedBuilding>;
+  buildings: SavedBuilding[];
   productionQueue: SavedQueueEntry[];
 }
 
@@ -213,6 +212,7 @@ export interface SavedUnit {
 }
 
 export interface SavedTile {
+  urbanSlot?: { cityId: string; buildingId: string | null };
   terrainType?: import('./map').TileType;
   originalTerrain?: import('./map').TileType;
   riverConnections?: number;

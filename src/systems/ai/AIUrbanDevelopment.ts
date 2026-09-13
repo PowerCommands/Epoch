@@ -1,0 +1,22 @@
+import { DOCK, getBuildingById } from '../../data/buildings';
+import type { BuildingType } from '../../entities/Building';
+import type { City } from '../../entities/City';
+import type { CityBuildings } from '../../entities/CityBuildings';
+import { canDevelopIntoCity, getUrbanSlots, getUrbanRequirement } from '../UrbanDevelopment';
+
+/** Modest development candidates, not a mandatory build order. Dock has its own
+ * naval value even on islands which can never complete City development. */
+export function getUrbanInfrastructureCandidates(
+  city: City, buildings: CityBuildings, canBuild: (building: BuildingType) => boolean,
+): Array<{ building: BuildingType; score: number }> {
+  const candidates: Array<{ building: BuildingType; score: number }> = [];
+  if (!buildings.has(DOCK.id) && canBuild(DOCK)) candidates.push({ building: DOCK, score: 35 });
+  if (!canDevelopIntoCity(city)) return candidates;
+  const completed = new Set(buildings.getAllEntries().map(b => getUrbanRequirement(b.buildingId)).filter((id): id is string => !!id));
+  for (const slot of getUrbanSlots(city)) {
+    if (!slot.buildingId || completed.has(slot.buildingId) || slot.buildingId === DOCK.id) continue;
+    const building = getBuildingById(slot.buildingId)!;
+    if (canBuild(building)) candidates.push({ building, score: 13 + completed.size });
+  }
+  return candidates;
+}

@@ -1714,6 +1714,7 @@ export class RightSidebarPanelDataProvider {
         this.mapData,
         this.gridSystem,
         {
+          getCityBuildings: id => this.cityManager.getBuildings(id),
           aircraftProductionReason: city => this.unitManager.airOperations?.productionBlockReason(city),
           strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
           unitUpkeepAffordability: this.unitUpkeepSystem,
@@ -1746,7 +1747,8 @@ export class RightSidebarPanelDataProvider {
             this.mapData,
             this.gridSystem,
             {
-              aircraftProductionReason: city => this.unitManager.airOperations?.productionBlockReason(city),
+              getCityBuildings: id => this.cityManager.getBuildings(id),
+          aircraftProductionReason: city => this.unitManager.airOperations?.productionBlockReason(city),
           strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
               unitUpkeepAffordability: this.unitUpkeepSystem,
               upkeepAffordabilityTurns: 10,

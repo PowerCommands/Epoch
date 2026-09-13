@@ -277,7 +277,7 @@ export class CheatConsole {
   }
 
   private readonly handleDocumentKeyDown = (event: KeyboardEvent): void => {
-    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'c') {
+    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') {
       event.preventDefault();
       event.stopPropagation();
       this.toggle();

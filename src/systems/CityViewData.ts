@@ -80,6 +80,7 @@ export function getCityViewTileBreakdown(
 
   const notes: string[] = [];
   if (isOwned) notes.push('Owned by city');
+  if (tile.urbanSlot) notes.push(`Urban development: ${(tile.urbanSlot.buildingId ? getBuildingById(tile.urbanSlot.buildingId)?.name : 'Water — no development substitute')}`);
   if (isWorked) notes.push('Currently worked');
   if (isClaimable) notes.push('Claimable now');
   if (isNextExpansion) notes.push('Planned next expansion');

@@ -149,7 +149,7 @@ test('save/load preserves an already-built Hotel without replaying its populatio
     ownedTileCoords: [{ x: 0, y: 0 }],
     workedTileCoords: [],
     lastTurnAttacked: null,
-    buildings: [HOTEL.id],
+    buildings: [{ buildingId: HOTEL.id, broken: false }],
     productionQueue: [],
   };
   const apply = (SaveLoadService as unknown as {

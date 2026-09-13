@@ -94,6 +94,11 @@ export const CIRCUS = building({ id: 'circus', name: 'Circus', era: 'classical',
 export const COLOSSEUM = building({ id: 'colosseum', name: 'Colosseum', era: 'classical', cost: 100, maintenance: 1, modifiers: { happinessPerTurn: 5 } });
 export const COURTHOUSE = building({ id: 'courthouse', name: 'Courthouse', era: 'classical', cost: 100, maintenance: 4, description: 'Occupied-city unhappiness omitted', modifiers: { happinessPerTurn: 2} });
 export const TEMPLE = building({ id: 'temple', name: 'Temple', era: 'classical', cost: 100, maintenance: 2, modifiers: { culturePerTurn: 5 }, description: '+5 Culture per turn', upgradesFrom: SHRINE.id });
+/** Basic naval infrastructure, independent of the Harbor → Seaport chain. */
+export const DOCK = building({ id: 'dock', name: 'Dock', era: 'ancient', placement: 'water',
+  allowedTerrains: [TileType.Coast], cost: 60, maintenance: 1,
+  description: 'Allows this city to build boats and ships. Naval units launch from the Dock. Requires Sailing.' });
+
 export const LIGHTHOUSE = building({
   id: 'lighthouse', name: 'Lighthouse', era: 'classical', placement: 'water', cost: 75, maintenance: 1,
   modifiers: {}, visibilityRadius: 10, covertDetectionRadius: 10,
@@ -197,7 +202,7 @@ export const ALL_BUILDINGS: BuildingType[] = [
   ...RENEWABLE_BUILDINGS,
   AIRFIELD, AIR_BASE,
   MONUMENT, GRANARY, SHRINE, BARRACKS, WALLS, WATER_MILL, STONE_WORKS, SEWERS,
-  LIBRARY, CIRCUS, COLOSSEUM, COURTHOUSE, TEMPLE, LIGHTHOUSE, STABLE,
+  DOCK, LIBRARY, CIRCUS, COLOSSEUM, COURTHOUSE, TEMPLE, LIGHTHOUSE, STABLE,
   CASTLE, ARMORY, FORGE, MARKET, MINT, GARDEN, UNIVERSITY, WORKSHOP, AQUEDUCT, HARBOR, OBSERVATORY,
   OPERA_HOUSE, BANK, MUSEUM, PUBLIC_SCHOOL, SEAPORT, WINDMILL, ZOO,
   MILITARY_ACADEMY, ARSENAL, FACTORY, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,

@@ -95,6 +95,7 @@ export class BuilderSystem {
       && (tile.buildingId !== undefined || tile.buildingConstruction !== undefined
         || tile.wonderId !== undefined || tile.wonderConstruction !== undefined)) return false;
     if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
+    if (tile.urbanSlot && tile.type !== TileType.NuclearWaste) return false;
     if (isBarbarianCamp(tile.buildingId) && !(tile.type === TileType.NuclearWaste && tile.buildingBroken)) return false; // active camp locks its tile
     if (tile.type === TileType.NuclearWaste) return tile.ownerId === nationId && tile.originalTerrain !== undefined;
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return false;
@@ -256,6 +257,7 @@ export class BuilderSystem {
       && (tile.wonderId !== undefined || tile.wonderConstruction !== undefined)) return { canBuild: false, reason: 'Wonder occupies this tile' };
     if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already improved' };
     if (tile.improvementConstruction !== undefined) return { canBuild: false, reason: 'Improvement already under construction' };
+    if (tile.urbanSlot && tile.type !== TileType.NuclearWaste) return { canBuild: false, reason: 'Reserved for urban development' };
     if (isBarbarianCamp(tile.buildingId) && !(tile.type === TileType.NuclearWaste && tile.buildingBroken)) return { canBuild: false, reason: 'Barbarian Camp blocks this tile' };
     if ((options.requireMovement ?? true) && movementUnit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
     if (tile.type === TileType.NuclearWaste) {

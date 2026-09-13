@@ -1,3 +1,4 @@
+import { initializeUrbanDevelopment } from '../src/systems/UrbanDevelopment.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -54,6 +55,7 @@ function makeHarness(population = 1) {
     tileX: 4,
     tileY: 4,
   });
+  initializeUrbanDevelopment(city, mapData);
   city.population = population;
   city.ownedTileCoords = tiles.flat().map((tile) => ({ x: tile.x, y: tile.y }));
   cityManager.addCity(city);

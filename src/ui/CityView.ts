@@ -126,6 +126,12 @@ export interface CityViewQueueItem {
 }
 
 export class CityView {
+  private settlementStageProvider: (cityId: string) => string = () => 'Village';
+
+  setSettlementStageProvider(provider: (cityId: string) => string): void {
+    this.settlementStageProvider = provider;
+  }
+
   private readonly root: HTMLDivElement;
   private readonly headerEl: HTMLDivElement;
   private readonly titleEl: HTMLDivElement;
@@ -607,7 +613,7 @@ export class CityView {
     };
     const isEditingCurrentCity = this.editingTitleCityId === city.id;
     if (!isEditingCurrentCity) {
-      this.titleEl.textContent = city.name;
+      this.titleEl.textContent = `${city.name} · ${this.settlementStageProvider(city.id)}`;
       this.titleInputEl.value = city.name;
     }
     this.syncTitleEditingState(isEditingCurrentCity);

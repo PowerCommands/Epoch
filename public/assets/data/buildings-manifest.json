@@ -129,6 +129,16 @@
       "iconPath": "assets/sprites/buildings/sewers.png"
     },
     {
+      "id": "dock",
+      "name": "Dock",
+      "era": "ancient",
+      "placement": "water",
+      "allowedTerrains": [
+        "coast"
+      ],
+      "iconPath": "assets/sprites/buildings/dock.png"
+    },
+    {
       "id": "library",
       "name": "Library",
       "era": "classical",

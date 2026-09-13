@@ -1,3 +1,4 @@
+import { reserveUrbanSlots } from './UrbanDevelopment';
 import type { City } from '../entities/City';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
 import { TileType, type MapData, type Tile } from '../types/map';
@@ -34,6 +35,7 @@ export class CityTerritorySystem {
     ].filter((tile): tile is Tile => tile !== undefined);
 
     city.ownedTileCoords = this.normalizeCoords(ownedTiles.map((tile) => ({ x: tile.x, y: tile.y })));
+    reserveUrbanSlots(city, mapData);
     this.updateWorkedTiles(city, mapData);
     this.refreshNextExpansionTile(city, mapData);
   }

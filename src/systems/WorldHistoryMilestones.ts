@@ -1,3 +1,6 @@
+import type { City } from '../entities/City';
+import type { CityBuildings } from '../entities/CityBuildings';
+import { getSettlementStage, type SettlementStage } from './UrbanDevelopment';
 import { WORLD_FIRSTS, WORLD_ERAS, eraArticleBody } from '../data/worldHistory';
 import type { Era } from '../data/technologies';
 import type { Producible } from '../types/producible';
@@ -9,9 +12,10 @@ export class WorldHistoryMilestones {
   private seen = new Set<string>();
   private ready = false;
   constructor(private readonly history: HistoricalTimelineService) {}
-  initialize(saved: unknown, existing: readonly Producible[], worldEra: Era): void {
+  initialize(saved: unknown, existing: readonly Producible[], worldEra: Era, existingCityIds: readonly string[] = []): void {
     this.seen = new Set(Array.isArray(saved) ? saved.filter((s): s is string => typeof s === 'string') : []);
     for (const event of this.history.getEvents()) {
+      if (event.metadata?.firstCity) this.seen.add('first:city');
       if (event.metadata?.worldHistoryKey) this.seen.add(event.metadata.worldHistoryKey);
     }
     // Existing scenario/legacy assets are not newly built; do not invent dates for them.
@@ -21,6 +25,8 @@ export class WorldHistoryMilestones {
     for (const era of Object.keys(WORLD_ERAS) as Era[]) {
       if (getEraRank(era) <= getEraRank(worldEra)) this.seen.add(`era:${era}`);
     }
+    for (const id of existingCityIds) this.seen.add(`city-developed:${id}`);
+    if (existingCityIds.length) this.seen.add('first:city');
     this.ready = true;
   }
   getState(): string[] { return [...this.seen].sort(); }
@@ -36,6 +42,19 @@ export class WorldHistoryMilestones {
           historyBody: definition.body, historyImage: definition.imagePath } });
     }
   }
+  developedCity(city: City, buildings: CityBuildings, previousStage: SettlementStage): void {
+    const key = `city-developed:${city.id}`;
+    if (!this.ready || previousStage !== 'Village' || getSettlementStage(buildings, city) !== 'City'
+      || this.seen.has(key)) return;
+    const firstCity = !this.seen.has('first:city');
+    this.seen.add(key);
+    this.seen.add('first:city');
+    this.history.record({ type: 'cityDeveloped', icon: '🏙',
+      text: firstCity ? `${city.name} becomes the world's first City.` : `${city.name} develops from a Village into a City.`,
+      eventNationIds: [city.ownerId], newsImportance: firstCity ? 0 : 4,
+      metadata: { cityId: city.id, cityName: city.name, firstCity, worldHistoryKey: key } });
+  }
+
   reachedEra(nationId: string, era: Era): void {
     const key = `era:${era}`;
     if (!this.ready || this.seen.has(key) || !WORLD_ERAS[era]) return;

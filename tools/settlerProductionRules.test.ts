@@ -1,3 +1,4 @@
+import { initializeUrbanDevelopment } from '../src/systems/UrbanDevelopment.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -135,13 +136,14 @@ test('a waiting Settler reserves the slot, while completed Settlers do not impos
   assert.equal(h.production.getQueue('orleans').length, 1);
 });
 
-test('completed Settler history persists per nation and old saves default to zero', () => {
+test('completed Settler history persists per nation in new-format saves', () => {
   const h = makeHarness();
   h.nations.getNation(FIRST_NATION)!.settlersProduced = 4;
   h.nations.getNation(SECOND_NATION)!.settlersProduced = 1;
   h.production.enqueue('paris', SETTLER_ITEM);
   const tiles: Tile[][] = [[0, 1, 2].map((x): Tile => ({ x, y: 0, type: TileType.Plains }))];
   const mapData: MapData = { width: 3, height: 1, tileSize: 1, tiles };
+  for (const city of h.cities.getAllCities()) initializeUrbanDevelopment(city, mapData);
   const saved = SaveLoadService.serialize({
     mapKey: 'settler-test', humanNationId: FIRST_NATION,
     activeNationIds: [FIRST_NATION, SECOND_NATION], gameSpeedId: 'marathon',
@@ -166,8 +168,5 @@ test('completed Settler history persists per nation and old saves default to zer
   assert.equal(restored.getNation(FIRST_NATION)!.settlersProduced, 4);
   assert.equal(restored.getNation(SECOND_NATION)!.settlersProduced, 1);
 
-  const legacy = saved.nations.map(({ settlersProduced: _omitted, ...nation }) => nation);
-  applyNations(legacy, restored);
-  assert.equal(restored.getNation(FIRST_NATION)!.settlersProduced, 0);
-  assert.equal(restored.getNation(SECOND_NATION)!.settlersProduced, 0);
+
 });

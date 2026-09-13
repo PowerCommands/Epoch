@@ -1,3 +1,4 @@
+import { initializeUrbanDevelopment } from '../src/systems/UrbanDevelopment.ts';
 import { readFileSync } from 'node:fs';
 import { InfrastructureSabotageSystem } from '../src/systems/InfrastructureSabotageSystem.ts';
 import { InfrastructureRepairSystem } from '../src/systems/InfrastructureRepairSystem.ts';
@@ -33,7 +34,6 @@ import { TileType, type MapData } from '../src/types/map.ts';
 
 import { BuildingPlacementSystem } from '../src/systems/BuildingPlacementSystem.ts';
 import { ProductionSystem } from '../src/systems/ProductionSystem.ts';
-import { migrateRenewableBuildings } from '../src/systems/RenewableBuildingMigration.ts';
 import { planAIPowerPlants } from '../src/systems/ai/AIPowerPlantPlanning.ts';
 import type { SavedGameState } from '../src/types/saveGame.ts';
 function harness() {
@@ -45,6 +45,9 @@ function harness() {
   const cities = new CityManager();
   const city = new City({ id: 'city', name: 'City', ownerId: 'a', tileX: 0, tileY: 0 });
   city.ownedTileCoords = map.tiles.flat().map(t => ({ x: t.x, y: t.y }));
+  // A mountain blocks urban development, leaving this placement fixture unreserved.
+  map.tiles[1][0].type = TileType.Mountain;
+  initializeUrbanDevelopment(city, map);
   cities.addCity(city);
   const turns = new TurnManager(nations);
   const research = new ResearchSystem(nations, cities, () => 1);
@@ -228,30 +231,6 @@ test('save/load preserves renewable Building tiles, reservations, duplicate capa
   assert.equal(getNationRenewableMaintenance(restored.map, 'a'), 5);
   assert.deepEqual(restored.tile.buildingConstruction, h.tile.buildingConstruction);
   assert.equal(restored.map.tiles[1][0].buildingBroken, true);
-});
-
-test('legacy renewable saves convert completed tiles and partial work to Buildings and release Workers', () => {
-  const state = {
-    tiles: [
-      { q: 1, r: 0, ownerId: 'a', improvementId: 'wind_turbine' },
-      { q: 2, r: 0, ownerId: 'a', improvementConstruction: { improvementId: 'solar_panels', cityId: 'city', unitId: 'worker', ownerId: 'a', remainingTurns: 1, totalTurns: 3 } },
-    ],
-    cities: [{ id: 'city', ownerId: 'a', ownedTileCoords: [{ x: 1, y: 0 }, { x: 2, y: 0 }], buildings: [], productionQueue: [] }],
-    units: [{ id: 'worker', improvementCharges: 2, actionStatus: 'building', buildAction: { improvementId: 'solar_panels' } }],
-  } as unknown as SavedGameState;
-  const migrated = migrateRenewableBuildings(state);
-  assert.equal(migrated.tiles[0].buildingId, 'wind_turbine');
-  assert.equal(migrated.tiles[0].improvementId, undefined);
-  assert.equal(migrated.tiles[1].buildingConstruction?.buildingId, 'solar_panels');
-  assert.equal(migrated.tiles[1].improvementConstruction, undefined);
-  assert.deepEqual(migrated.cities[0].buildings, ['wind_turbine']);
-  assert.equal(migrated.cities[0].productionQueue[0].item.kind, 'building');
-  assert.ok(Math.abs(migrated.cities[0].productionQueue[0].accumulated - 30) < 0.001);
-  assert.equal(migrated.units[0].buildAction, undefined);
-  assert.equal(migrated.units[0].improvementCharges, 2);
-  assert.equal(migrated.units[0].actionStatus, 'active');
-  assert.equal(state.tiles[0].improvementId, 'wind_turbine');
-  assert.equal(migrateRenewableBuildings(migrated), migrated);
 });
 
 test('legacy Solar Plant remains resolvable without entering new production', () => {

@@ -98,6 +98,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     prerequisites: ['pottery'],
     leadsTo: ['optics'],
     unlocks: [
+      { kind: 'building', id: 'dock' },
       { kind: 'unit', id: 'work_boat' },
       { kind: 'unit', id: 'trireme' },
       { kind: 'unit', id: 'cargo_ship' },

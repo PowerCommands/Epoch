@@ -8,7 +8,17 @@ export type CityFocusType =
   | 'naval'
   | 'scientific';
 
+/** Frozen founding blueprint. Six null requirements mean development is impossible
+ * and the surrounding territory has no urban reservations. */
+export interface UrbanDevelopmentLayout {
+  /** Six required building IDs in canonical order, or six nulls for a blocked site. */
+  requirements: Array<string | null>;
+  /** Founding geography, independent of later terrain changes. */
+  waterMask: number;
+}
+
 export interface CityConfig {
+  urbanDevelopment?: UrbanDevelopmentLayout;
   id: string;
   name: string;
   ownerId: string; // referens till Nation.id
@@ -34,6 +44,7 @@ export interface CityProductionRhythm {
  * Ren data utan Phaser-beroenden. All rendering sköts av CityRenderer.
  */
 export class City {
+  urbanDevelopment?: UrbanDevelopmentLayout;
   readonly id: string;
   name: string;
   ownerId: string;
@@ -65,6 +76,7 @@ export class City {
   productionRhythm: CityProductionRhythm;
 
   constructor(config: CityConfig) {
+    this.urbanDevelopment = config.urbanDevelopment ? { requirements: [...config.urbanDevelopment.requirements], waterMask: config.urbanDevelopment.waterMask } : undefined;
     this.id = config.id;
     this.name = config.name;
     this.ownerId = config.ownerId;

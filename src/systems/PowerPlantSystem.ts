@@ -1,3 +1,4 @@
+import { getSettlementStage, CITY_POPULATION_CAPACITY_BONUS } from './UrbanDevelopment';
 import { nuclearPlantAtRisk, nuclearPlantRoll, NUCLEAR_PLANT_MELTDOWN_CHANCE } from '../data/nuclearPlants';
 import { TileType, type Tile } from '../types/map';
 import { getBuildingById } from '../data/buildings';
@@ -293,7 +294,10 @@ export class PowerPlantSystem {
       // Repeated installations are counted from their physical tiles below.
       return total + (building?.repeatable ? 0 : building?.modifiers.populationCapacity ?? 0);
     }, 0);
-    return BASE_CITY_POPULATION_CAPACITY + infrastructureBonus + plantBonus + this.getCityRenewableCapacity(cityId);
+    const city = this.cityManager.getCity(cityId);
+    const developmentBonus = city && getSettlementStage(this.cityManager.getBuildings(cityId), city) === 'City'
+      ? CITY_POPULATION_CAPACITY_BONUS : 0;
+    return BASE_CITY_POPULATION_CAPACITY + infrastructureBonus + plantBonus + this.getCityRenewableCapacity(cityId) + developmentBonus;
   }
 
   getCityRenewableCapacity(cityId: string): number {

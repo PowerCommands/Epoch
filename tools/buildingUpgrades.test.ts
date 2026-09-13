@@ -1,3 +1,4 @@
+import { URBAN_SLOTS } from '../src/systems/UrbanDevelopment.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -441,10 +442,11 @@ test('completed upgrades mark every predecessor as obsolete for human building l
   assert.equal(isBuildingObsoleteInCity(buildings, HARBOR), false);
 });
 
-function savedCity(buildings: SavedCity['buildings']): SavedCity {
+function savedCity(buildings: string[]): SavedCity {
   return {
     id: CITY_ID,
     name: 'Forgeholm',
+    urbanDevelopment: { requirements: URBAN_SLOTS.map(s => s.buildingId), waterMask: 0 },
     ownerId: NATION_ID,
     tileX: 2,
     tileY: 2,
@@ -459,7 +461,7 @@ function savedCity(buildings: SavedCity['buildings']): SavedCity {
     ownedTileCoords: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }],
     workedTileCoords: [],
     lastTurnAttacked: null,
-    buildings,
+    buildings: buildings.map(buildingId => ({ buildingId, broken: false })),
     productionQueue: [],
   };
 }
@@ -473,56 +475,6 @@ function applySavedCity(h: ReturnType<typeof makeHarness>, saved: SavedCity): vo
   }).applyCitiesAndProduction;
   apply([saved], h.cityManager, h.production, h.mapData, new HexGridSystem(), 'standard');
 }
-
-test('legacy saves with multiple chain members normalize to the highest upgrade and remove old tiles', () => {
-  const h = makeHarness();
-  h.mapData.tiles[0][0].buildingId = BARRACKS.id;
-  h.mapData.tiles[0][1].buildingId = ARMORY.id;
-  h.mapData.tiles[0][2].buildingId = MILITARY_ACADEMY.id;
-  applySavedCity(h, savedCity([BARRACKS.id, ARMORY.id, MILITARY_ACADEMY.id]));
-
-  assert.deepEqual(h.cityManager.getBuildings(CITY_ID).getAll(), [MILITARY_ACADEMY.id]);
-  assert.equal(h.mapData.tiles[0][0].buildingId, undefined);
-  assert.equal(h.mapData.tiles[0][1].buildingId, undefined);
-  assert.equal(h.mapData.tiles[0][2].buildingId, MILITARY_ACADEMY.id);
-});
-
-test('legacy military-chain saves normalize through Military Base and preserve it on load', () => {
-  const h = makeHarness();
-  h.mapData.tiles[0][0].buildingId = BARRACKS.id;
-  h.mapData.tiles[0][1].buildingId = ARMORY.id;
-  h.mapData.tiles[0][2].buildingId = MILITARY_BASE.id;
-  applySavedCity(h, savedCity([BARRACKS.id, ARMORY.id, MILITARY_ACADEMY.id, MILITARY_BASE.id]));
-
-  assert.deepEqual(h.cityManager.getBuildings(CITY_ID).getAll(), [MILITARY_BASE.id]);
-  assert.equal(h.mapData.tiles[0][0].buildingId, undefined);
-  assert.equal(h.mapData.tiles[0][1].buildingId, undefined);
-  assert.equal(h.mapData.tiles[0][2].buildingId, MILITARY_BASE.id);
-});
-
-test('legacy Barracks plus Armory saves normalize to Armory', () => {
-  const h = makeHarness();
-  h.mapData.tiles[0][0].buildingId = BARRACKS.id;
-  h.mapData.tiles[0][1].buildingId = ARMORY.id;
-  applySavedCity(h, savedCity([BARRACKS.id, ARMORY.id]));
-
-  assert.deepEqual(h.cityManager.getBuildings(CITY_ID).getAll(), [ARMORY.id]);
-  assert.equal(h.mapData.tiles[0][0].buildingId, undefined);
-  assert.equal(h.mapData.tiles[0][1].buildingId, ARMORY.id);
-});
-
-test('legacy saves for each single-step chain normalize to the successor', () => {
-  for (const [predecessor, successor] of SINGLE_STEP_UPGRADE_PAIRS) {
-    const h = makeHarness();
-    h.mapData.tiles[0][0].buildingId = predecessor.id;
-    h.mapData.tiles[0][1].buildingId = successor.id;
-    applySavedCity(h, savedCity([predecessor.id, successor.id]));
-
-    assert.deepEqual(h.cityManager.getBuildings(CITY_ID).getAll(), [successor.id]);
-    assert.equal(h.mapData.tiles[0][0].buildingId, undefined);
-    assert.equal(h.mapData.tiles[0][1].buildingId, successor.id);
-  }
-});
 
 test('save/load preserves each single-step chain at its upgraded state', () => {
   for (const [predecessor, successor] of SINGLE_STEP_UPGRADE_PAIRS) {

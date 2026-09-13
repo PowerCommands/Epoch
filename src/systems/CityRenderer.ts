@@ -1,3 +1,5 @@
+import { getSettlementStage } from './UrbanDevelopment';
+import { UrbanCityVisual } from './rendering/UrbanCityVisual';
 import { AmbientSprites } from './rendering/AmbientSprites';
 import Phaser from 'phaser';
 import { StructureDamageEffects } from '../renderers/StructureDamageEffects';
@@ -25,6 +27,7 @@ const HIT_RADIUS = 20;
  * The crown identifies the current residence capital.
  */
 export class CityRenderer {
+  private readonly urbanVisual: UrbanCityVisual;
   private readonly scene: Phaser.Scene;
   private readonly tileMap: TileMap;
   private readonly cityManager: CityManager;
@@ -34,6 +37,17 @@ export class CityRenderer {
   private readonly containers = new Map<string, Phaser.GameObjects.Container>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
   private readonly threatGlows = new Map<string, Phaser.GameObjects.Graphics>();
+  private detailCityId: string | null = null;
+
+  setDetailCity(cityId: string | null): void {
+    if (this.detailCityId === cityId) return;
+    const previous = this.detailCityId;
+    this.detailCityId = cityId;
+    for (const city of this.cityManager.getAllCities()) {
+      if (city.id === previous || city.id === cityId) this.refreshCity(city);
+    }
+  }
+
   private threatPredicate: (city: City) => boolean = () => false;
   private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
 
@@ -45,6 +59,7 @@ export class CityRenderer {
     getNationEra: (nationId: string) => Era,
   ) {
     this.scene = scene;
+    this.urbanVisual = new UrbanCityVisual(scene, tileMap);
     this.tileMap = tileMap;
     this.cityManager = cityManager;
     this.nationManager = nationManager;
@@ -131,12 +146,18 @@ export class CityRenderer {
     this.damageEffects.remove(city.id);
     this.threatGlows.delete(city.id);
     const oldContainer = this.containers.get(city.id);
+    const wasVillage = oldContainer?.getData('settlementStage') === 'Village';
     if (oldContainer) {
       oldContainer.destroy();
       this.containers.delete(city.id);
     }
 
     this.renderCity(city);
+    const next = this.containers.get(city.id);
+    if (wasVillage && next?.getData('settlementStage') === 'City') {
+      next.setAlpha(0);
+      this.scene.tweens.add({ targets: next, alpha: 1, duration: 1000 });
+    }
   }
 
   private renderCity(city: City): void {
@@ -146,14 +167,17 @@ export class CityRenderer {
     const { x: worldX, y: worldY } = this.tileMap.tileToWorld(city.tileX, city.tileY);
     const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
 
-    const sprite = this.scene.add.image(0, 0, getCitySpriteKey(this.getNationEra(city.ownerId), city.health <= CITY_BASE_HEALTH / 2));
+    const stage = getSettlementStage(this.cityManager.getBuildings(city.id), city);
+    const developed = city.id !== this.detailCityId && stage === 'City';
+    const sprite = developed ? this.urbanVisual.create(city)
+      : this.scene.add.image(0, 0, getCitySpriteKey(this.getNationEra(city.ownerId), city.health <= CITY_BASE_HEALTH / 2));
     const scaleMultiplier = city.isResidenceCapital ? CAPITAL_SCALE_MULTIPLIER : 1;
-    sprite.setDisplaySize(
+    if (!developed) sprite.setDisplaySize(
       rect.width * CITY_TILE_FILL_SCALE * scaleMultiplier,
       rect.height * CITY_TILE_FILL_SCALE * scaleMultiplier,
     );
-    this.hexTileMaskHelper.applyHexMask(sprite, city.tileX, city.tileY);
-    AmbientSprites.forScene(this.scene).attach(sprite, 'city', city.id, () => [city.tileX, city.tileY],
+    if (!developed) this.hexTileMaskHelper.applyHexMask(sprite, city.tileX, city.tileY);
+    if (!developed) AmbientSprites.forScene(this.scene).attach(sprite, 'city', city.id, () => [city.tileX, city.tileY],
       () => city.health > CITY_BASE_HEALTH / 2 && this.visibilityPredicate(city.tileX, city.tileY));
 
     const glow = this.scene.add.graphics();
@@ -170,7 +194,7 @@ export class CityRenderer {
     this.threatGlows.set(city.id, glow);
     const children: Phaser.GameObjects.GameObject[] = [glow, sprite];
     const fortificationLevel = getCityFortificationLevel(this.cityManager.getBuildings(city.id));
-    if (fortificationLevel !== 0) {
+    if (fortificationLevel !== 0 && !developed) {
       children.push(this.createFortificationWall(outline, fortificationLevel));
     }
     if (city.isResidenceCapital) {
@@ -178,7 +202,10 @@ export class CityRenderer {
     }
 
     const container = this.scene.add.container(worldX, worldY, children);
-    container.setDepth(CITY_DEPTH);
+    // Streets sit below units so movement and garrisons remain readable.
+    container.setDepth(developed ? 14 : CITY_DEPTH);
+    container.setData('settlementStage', stage);
+    if (developed) this.urbanVisual.attach(container, city);
 
     // Interactive hit area — circle matching old behavior
     container.setSize(HIT_RADIUS * 2, HIT_RADIUS * 2);

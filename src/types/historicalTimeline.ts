@@ -5,6 +5,7 @@ export type HistoricalEventType =
   | 'mutualFoeActivated'
   | 'diplomaticAffair'
   | 'cityFounded'
+  | 'cityDeveloped'
   | 'firstContact'
   | 'allianceFormed'
   | 'embassyEstablished'
@@ -65,6 +66,7 @@ export interface HistoricalEventMetadata {
   /** Frozen display names aligned with eventNationIds for removed-nation safety. */
   nationNames?: string[];
   leaderNames?: string[];
+  firstCity?: boolean;
   cityId?: string;
   cityName?: string;
   aggressorNationId?: string;

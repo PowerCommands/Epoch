@@ -287,6 +287,18 @@
           "size": 1644165
         },
         {
+          "name": "dock-broken.png",
+          "path": "/assets/sprites/buildings/dock-broken.png",
+          "type": "PNG",
+          "size": 20223
+        },
+        {
+          "name": "dock.png",
+          "path": "/assets/sprites/buildings/dock.png",
+          "type": "PNG",
+          "size": 19277
+        },
+        {
           "name": "factory-broken.png",
           "path": "/assets/sprites/buildings/factory-broken.png",
           "type": "PNG",
@@ -3134,7 +3146,7 @@
           "name": "ivory.png",
           "path": "/assets/sprites/resources/ivory.png",
           "type": "PNG",
-          "size": 73428
+          "size": 80956
         },
         {
           "name": "natural_gas.png",
@@ -3914,7 +3926,7 @@
           "name": "great_war_bomber.png",
           "path": "/assets/sprites/units/great_war_bomber.png",
           "type": "PNG",
-          "size": 72413
+          "size": 70131
         },
         {
           "name": "great_war_infantry.png",

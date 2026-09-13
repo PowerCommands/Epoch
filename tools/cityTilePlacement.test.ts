@@ -7,7 +7,7 @@ import { BuildingPlacementSystem } from '../src/systems/BuildingPlacementSystem.
 import { WonderPlacementSystem } from '../src/systems/WonderPlacementSystem.ts';
 import { TileType, type MapData } from '../src/types/map.ts';
 
-function setup(width = 2) {
+function setup(width = 3) {
   const city = new City({ id: 'city', name: 'City', ownerId: 'nation', tileX: 0, tileY: 0 });
   const map: MapData = {
     width, height: 1, tileSize: 1,
@@ -21,13 +21,13 @@ test('Barracks placement excludes the city center for humans and AI', () => {
   const { city, map, buildings } = setup();
   assert.equal(BARRACKS.requiresEmptyTile, undefined);
   assert.equal(buildings.startPlacement(city, BARRACKS.id, map), true);
-  assert.deepEqual(buildings.getState()?.validCoords, [{ x: 1, y: 0 }]);
+  assert.deepEqual(buildings.getState()?.validCoords, [{ x: 2, y: 0 }]);
   assert.deepEqual(buildings.selectTile(city, { x: 0, y: 0 }, map), { status: 'invalid' });
   assert.equal(map.tiles[0][0].buildingConstruction, undefined);
-  assert.equal(buildings.selectTile(city, { x: 1, y: 0 }, map).status, 'reserved');
-  assert.equal(buildings.completePhysicalBuilding(city, BARRACKS, map), map.tiles[0][1]);
+  assert.equal(buildings.selectTile(city, { x: 2, y: 0 }, map).status, 'reserved');
+  assert.equal(buildings.completePhysicalBuilding(city, BARRACKS, map), map.tiles[0][2]);
   const ai = setup();
-  assert.deepEqual(ai.buildings.reserveFirstValidPlacement(ai.city, BARRACKS, ai.map), { tileX: 1, tileY: 0 });
+  assert.deepEqual(ai.buildings.reserveFirstValidPlacement(ai.city, BARRACKS, ai.map), { tileX: 2, tileY: 0 });
 });
 
 test('a city with no other tiles cannot reserve a building or wonder', () => {
@@ -61,7 +61,7 @@ test('Walls retain automatic city placement without a map reservation', () => {
 test('wonder placement also excludes the city center', () => {
   const { city, map, wonders } = setup();
   assert.equal(wonders.startPlacement(city, PYRAMIDS.id, map), true);
-  assert.deepEqual(wonders.getState()?.validCoords, [{ x: 1, y: 0 }]);
+  assert.deepEqual(wonders.getState()?.validCoords, [{ x: 2, y: 0 }]);
   assert.deepEqual(wonders.selectTile(city, { x: 0, y: 0 }, map), { status: 'invalid' });
-  assert.deepEqual(wonders.reserveFirstValidPlacement(city, PYRAMIDS, map), { tileX: 1, tileY: 0 });
+  assert.deepEqual(wonders.reserveFirstValidPlacement(city, PYRAMIDS, map), { tileX: 2, tileY: 0 });
 });

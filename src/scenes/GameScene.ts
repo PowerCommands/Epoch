@@ -1,3 +1,5 @@
+import { findFunctioningDock, findDockSpawnTile } from '../systems/NavalProduction';
+import { isUrbanBuilding, isAssignedUrbanBuilding, getSettlementStage, getUrbanSlots, reserveUrbanSlots, canDevelopIntoCity } from '../systems/UrbanDevelopment';
 import { AmbientSprites } from '../systems/rendering/AmbientSprites';
 import { HistoricalMapRecorder } from '../systems/HistoricalMapRecorder';
 import { WorldHistoryMilestones } from '../systems/WorldHistoryMilestones';
@@ -715,6 +717,7 @@ export class GameScene extends Phaser.Scene {
       if (!Array.isArray(scenarioCityById.get(city.id)?.ownedTileCoords)) {
         cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
       }
+      reserveUrbanSlots(city, mapData);
       culturalSphereSystem.claimInitialCityCulture(city, mapData, gridSystem);
     }
 
@@ -1305,7 +1308,11 @@ export class GameScene extends Phaser.Scene {
     let suppressPromote = false;
 
     // 13. Produktionssystem
-    const tileBuildingRenderer = new TileBuildingRenderer(this, tileMap, mapData, productionSystem);
+    const tileBuildingRenderer = new TileBuildingRenderer(this, tileMap, mapData, productionSystem, id => cityManager.getCity(id));
+    tileBuildingRenderer.setAbsorbedPredicate(tile => {
+      const city = tile.urbanSlot && cityManager.getCity(tile.urbanSlot.cityId);
+      return !!city && getSettlementStage(cityManager.getBuildings(city.id), city) === 'City';
+    });
     const tileImprovementOverlayRenderer = new TileImprovementOverlayRenderer(this, tileMap, mapData, nationManager);
     tileImprovementOverlayRenderer.rebuildAll();
     let hudLayer: HudLayer | null = null;
@@ -1331,6 +1338,10 @@ export class GameScene extends Phaser.Scene {
     };
     refreshCultureOverlay();
     const cityView = new CityView();
+    cityView.setSettlementStageProvider(id => {
+      const city = cityManager.getCity(id)!;
+      return canDevelopIntoCity(city) ? getSettlementStage(cityManager.getBuildings(id), city) : 'Village · geography prevents City development';
+    });
     let cityViewDismissedCityId: string | null = null;
 
     // 13b. Diplomacy system
@@ -2022,7 +2033,12 @@ export class GameScene extends Phaser.Scene {
       getManufacturedEffectTotal(resourceAccessSystem, nationId, 'happiness');
     happinessSystem.recalculateAll();
     const strategicResourceCapacitySystem = new StrategicResourceCapacitySystem(resourceAccessSystem, unitManager);
+    productionSystem.setNavalDockAvailable(id => {
+      const city = cityManager.getCity(id);
+      return !!city && !!findFunctioningDock(city, cityManager.getBuildings(id), mapData);
+    });
     const unitProductionRuleContext = {
+      getCityBuildings: (id: string) => cityManager.getBuildings(id),
       aircraftProductionReason: (city: City) => unitManager.airOperations?.productionBlockReason(city),
       strategicResourceCapacitySystem,
       unitUpkeepAffordability: unitUpkeepSystem,
@@ -5263,6 +5279,7 @@ export class GameScene extends Phaser.Scene {
     // recalculation, renderer/fog refresh and the cultural burst. The physical
     // tile destination (null for city-wide buildings) is resolved by the caller.
     const applyCompletedBuilding = (city: City, building: BuildingType, completedTile: Tile | null): boolean => {
+      const previousStage = getSettlementStage(cityManager.getBuildings(city.id), city);
       if (powerPlantSystem.isPowerPlant(building.id)) {
         const result = powerPlantSystem.completeConstruction(
           city.id,
@@ -5277,6 +5294,11 @@ export class GameScene extends Phaser.Scene {
         completeBuildingUpgrade(cityManager.getBuildings(city.id), building);
       }
       applyBuildingCompletionEffects(city, building);
+      worldHistoryMilestones.developedCity(city, cityManager.getBuildings(city.id), previousStage);
+      if (isUrbanBuilding(building.id) || building.upgradesFrom) {
+        cityRenderer.refreshCity(city);
+        for (const slot of getUrbanSlots(city)) tileBuildingRenderer.refreshTile(slot.x, slot.y);
+      }
       const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
       logManager.info({
         nationIds: [city.ownerId],
@@ -5506,7 +5528,7 @@ export class GameScene extends Phaser.Scene {
 
       const aircraftDestination = item.unitType.aircraftRole ? combatSystem.airOperations.productionDestination(city, item.aircraftBase) : undefined;
       if (item.unitType.aircraftRole && !aircraftDestination) return false;
-      const placement = aircraftDestination ?? (STRATEGIC_WEAPONS[item.unitType.id] ? { x: city.tileX, y: city.tileY } : this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem));
+      const placement = aircraftDestination ?? (STRATEGIC_WEAPONS[item.unitType.id] ? { x: city.tileX, y: city.tileY } : this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem, mapData, cityManager));
       if (placement === null) return false;
 
       // Improvement-building units (Worker, Work Boat) only gain their full
@@ -5938,8 +5960,11 @@ export class GameScene extends Phaser.Scene {
       }
     });
     cityManager.onCityChanged((event) => {
-      if (event.reason !== 'healthChanged' || !event.city) return;
+      if ((event.reason !== 'healthChanged' && event.reason !== 'buildingsChanged') || !event.city) return;
       cityRenderer.refreshCity(event.city);
+      if (event.reason === 'buildingsChanged') {
+        for (const slot of getUrbanSlots(event.city)) tileBuildingRenderer.refreshTile(slot.x, slot.y);
+      }
       cityBannerRenderer.refreshCity(event.city);
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -9914,7 +9939,7 @@ export class GameScene extends Phaser.Scene {
         return { ok: false, message: 'Grand Stadium is available only in the confirmed Games host city before Competition.' };
       }
 
-      if (building.placement === 'city' || buildingPlacementSystem.isAutomaticUpgrade(city, building, mapData)) {
+      if (isAssignedUrbanBuilding(city, building.id) || building.placement === 'city' || buildingPlacementSystem.isAutomaticUpgrade(city, building, mapData)) {
         productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
         buildingPlacementSystem.cancelPlacement();
         wonderPlacementSystem.cancelPlacement();
@@ -10039,6 +10064,8 @@ export class GameScene extends Phaser.Scene {
     const closeCityViewAndRestoreDefaultZoom = (): void => {
       const wasOpen = cityView.getOpenCityId() !== null;
       cityView.close();
+      cityRenderer.setDetailCity(null);
+      tileBuildingRenderer.setDetailCity(null);
       cityBannerRenderer.setDimmed(false);
       if (wasOpen) this.cameraController.setZoom(getDefaultCameraZoom());
     };
@@ -10081,7 +10108,7 @@ export class GameScene extends Phaser.Scene {
         refreshOpenCityView();
         return;
       }
-      if (building.placement === 'city' || buildingPlacementSystem.isAutomaticUpgrade(city, building, mapData)) {
+      if (isAssignedUrbanBuilding(city, building.id) || building.placement === 'city' || buildingPlacementSystem.isAutomaticUpgrade(city, building, mapData)) {
         if (!cityManager.getBuildings(city.id).has(buildingId) && !isBuildingQueued(city.id, buildingId)) {
           productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
         }
@@ -11529,6 +11556,15 @@ export class GameScene extends Phaser.Scene {
           ? `That tile is not claimed by ${nationName}.`
           : 'Cannot build on an unclaimed tile.';
       }
+      if (isAssignedUrbanBuilding(city, building.id)) {
+        if (cityManager.getBuildings(city.id).has(building.id)) return `${city.name} already has ${building.name}.`;
+        const destination = buildingPlacementSystem.completePhysicalBuilding(city, building, mapData);
+        if (!destination) return `The reserved urban slot for ${building.name} is unavailable.`;
+        return applyCompletedBuilding(city, building, destination)
+          ? `Built ${building.name} in its urban slot in ${city.name}.`
+          : `Could not complete ${building.name}.`;
+      }
+      if (tile.urbanSlot) return 'This tile is reserved for urban development.';
       if (tileX === city.tileX && tileY === city.tileY) {
         return `Cannot place ${building.name} on the city center tile; select another tile owned by ${city.name}.`;
       }
@@ -12553,7 +12589,8 @@ export class GameScene extends Phaser.Scene {
       ...cityManager.getAllCities().flatMap(city => cityManager.getBuildings(city.id).getAllEntries().map(entry => entry.buildingId)
         .map(id => getBuildingById(id)).filter((b): b is NonNullable<typeof b> => !!b)
         .map(buildingType => ({ kind: 'building' as const, buildingType }))),
-    ], getHighestEra(nationManager.getAllNations().map(n => eraSystem.getNationEra(n.id))));
+    ], getHighestEra(nationManager.getAllNations().map(n => eraSystem.getNationEra(n.id))),
+      cityManager.getAllCities().filter(city => getSettlementStage(cityManager.getBuildings(city.id), city) === 'City').map(city => city.id));
     turnManager.start();
 
     function refreshMovePreview(): void {
@@ -12659,6 +12696,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     const openCityView = (city: City): void => {
+      cityRenderer.setDetailCity(city.id);
+      tileBuildingRenderer.setDetailCity(city.id);
       unbindGameplayHotkeys();
       cityBannerRenderer.setDimmed(true);
       const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
@@ -12863,18 +12902,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Naval units (including Work Boats) muster at a Harbor/Seaport; military land
+   * Naval units (including Work Boats) launch from Dock; military land
    * units (not aircraft) at a Barracks or its upgraded variant. Higher tiers are
    * listed first so the strongest muster building wins.
    */
-  private static readonly NAVAL_SPAWN_BUILDING_IDS: readonly string[] = [SEAPORT.id, HARBOR.id];
   private static readonly MILITARY_SPAWN_BUILDING_IDS: readonly string[] = [
     MILITARY_BASE.id, MILITARY_ACADEMY.id, ARMORY.id, BARRACKS.id,
   ];
 
   /** Preferred muster-building ids for a unit type, or empty for none. */
   private getPreferredSpawnBuildingIds(unitType: UnitType): readonly string[] {
-    if (unitType.isNaval) return GameScene.NAVAL_SPAWN_BUILDING_IDS;
     if (isMilitaryUnitType(unitType) && !unitType.aircraftRole) return GameScene.MILITARY_SPAWN_BUILDING_IDS;
     return [];
   }
@@ -12885,11 +12922,11 @@ export class GameScene extends Phaser.Scene {
     city: City,
     unitType: UnitType,
     gridSystem: IGridSystem,
+    mapData: MapData,
+    cityManager: CityManager,
   ): { x: number; y: number } | null {
     const adjacentCandidates = gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY });
-    const candidates = unitType.isNaval
-      ? city.ownedTileCoords
-      : [{ x: city.tileX, y: city.tileY }, ...adjacentCandidates];
+    const candidates = [{ x: city.tileX, y: city.tileY }, ...adjacentCandidates];
 
     const isValidPlacement = (candidate: { x: number; y: number }): boolean => {
       const tile = tileMap.getTileAt(candidate.x, candidate.y);
@@ -12904,8 +12941,12 @@ export class GameScene extends Phaser.Scene {
       return true;
     };
 
-    // Prefer the muster building's own tile (Harbor/Seaport for ships, Barracks
-    // or its upgrade for military land units) when it exists and is free; if it
+    if (unitType.isNaval) {
+      const dock = findFunctioningDock(city, cityManager.getBuildings(city.id), mapData);
+      return dock ? findDockSpawnTile(dock, mapData, gridSystem, isValidPlacement) : null;
+    }
+
+    // Prefer Barracks or its upgrade for military land units when it exists and is free; if it
     // is occupied, fall through to the nearby-tile scan below.
     const preferredBuildingIds = this.getPreferredSpawnBuildingIds(unitType);
     if (preferredBuildingIds.length > 0) {

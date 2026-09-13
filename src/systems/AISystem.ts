@@ -1,3 +1,4 @@
+import { getUrbanInfrastructureCandidates } from './ai/AIUrbanDevelopment';
 import { nuclearPlantMaintenancePriority } from '../data/nuclearPlants';
 import { planAirProduction } from './ai/AIAirProduction';
 import { runStrategicWeaponsAI, getNuclearCapability } from './ai/AIStrategicWeapons';
@@ -7152,6 +7153,12 @@ export class AISystem {
 
     // Build candidates from preferred to fallback so ties resolve sensibly.
     const candidates: AIProductionCandidate[] = [];
+    for (const {building, score} of getUrbanInfrastructureCandidates(city, buildings,
+      building => this.canCityBuildBuilding(city, nationId, building))) {
+      candidates.push({item: {kind: 'building', buildingType: building}, baseScore: score,
+        category: this.getInfrastructureProductionCategory(building)});
+    }
+
     const strategicStock = this.unitManager.getUnitsByOwner(nationId);
     const strategicQueued = this.cityManager.getCitiesByOwner(nationId).flatMap(c => this.productionSystem.getQueue(c.id));
     const countStrategic = (id: string) => strategicStock.filter(u => u.unitType.id === id).length + strategicQueued.filter(e => e.item.kind === 'unit' && e.item.unitType.id === id).length;
@@ -8765,6 +8772,7 @@ export class AISystem {
 
   private getUnitProductionRuleContext(): UnitProductionRuleContext {
     return {
+      getCityBuildings: id => this.cityManager.getBuildings(id),
       aircraftProductionReason: (city: City) => this.combatSystem.airOperations.productionBlockReason(city),
       strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
       unitUpkeepAffordability: this.unitUpkeepSystem,

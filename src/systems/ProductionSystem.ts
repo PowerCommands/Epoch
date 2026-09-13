@@ -1,3 +1,5 @@
+import { DOCK } from '../data/buildings';
+import { DOCK_PRODUCTION_REQUIREMENT } from './NavalProduction';
 import { CityManager } from './CityManager';
 import { TurnManager } from './TurnManager';
 import { HappinessSystem } from './HappinessSystem';
@@ -123,6 +125,15 @@ export class ProductionSystem {
   private productionDiversionProvider: ProductionDiversionProvider = () => 0;
   private itemProductionCostProvider: ItemProductionCostProvider = (_cityId, _item, baseCost) => baseCost;
   private itemProductionBlockReasonProvider: ItemProductionBlockReasonProvider = () => undefined;
+  private navalDockAvailable = (cityId: string): boolean => this.cityManager.getBuildings(cityId)?.hasActive(DOCK.id) === true;
+
+  setNavalDockAvailable(provider: (cityId: string) => boolean): void { this.navalDockAvailable = provider; }
+
+  private navalProductionReason(cityId: string, item: Producible): string | undefined {
+    return item.kind === 'unit' && item.unitType.isNaval && !this.navalDockAvailable(cityId)
+      ? DOCK_PRODUCTION_REQUIREMENT : undefined;
+  }
+
   private hasSkippedInitialTurnStart = false;
   private projectTurnHandler: ProjectTurnHandler = () => {};
   /** When set, returns a reason a nation may not produce a given military unit (e.g. demilitarization). */
@@ -493,7 +504,7 @@ export class ProductionSystem {
     if (options.settlerProductionSlotException !== 'expeditionFollowUp' && this.isSettler(item) && this.hasQueuedSettlerForCityOwner(cityId)) {
       return SETTLER_PRODUCTION_SLOT_BLOCK_REASON;
     }
-    return this.aircraftProductionReason(cityId, item) ?? this.productionProhibition(cityId, item) ?? this.itemProductionBlockReasonProvider(cityId, item);
+    return this.navalProductionReason(cityId, item) ?? this.aircraftProductionReason(cityId, item) ?? this.productionProhibition(cityId, item) ?? this.itemProductionBlockReasonProvider(cityId, item);
   }
 
   private aircraftDestination: (cityId: string) => import('../entities/Unit').AircraftBase | undefined = () => undefined;
@@ -539,7 +550,7 @@ export class ProductionSystem {
       if (!queue || queue.length === 0) continue;
 
       const entry = queue[0];
-      const aircraftBlockReason = this.aircraftProductionReason(city.id, entry.item);
+      const aircraftBlockReason = this.navalProductionReason(city.id, entry.item) ?? this.aircraftProductionReason(city.id, entry.item);
       if (aircraftBlockReason) {
         entry.blockedReason = aircraftBlockReason;
         this.notifyChanged(city.id);
@@ -588,7 +599,7 @@ export class ProductionSystem {
   private tryComplete(cityId: string, entry: QueueEntry): boolean {
     // The queued Settler itself owns the nation slot, so completion only checks
     // external blockers here; the slot guard applies when committing new work.
-    const externalBlockReason = this.aircraftProductionReason(cityId, entry.item) ?? this.productionProhibition(cityId, entry.item) ?? this.itemProductionBlockReasonProvider(cityId, entry.item);
+    const externalBlockReason = this.navalProductionReason(cityId, entry.item) ?? this.aircraftProductionReason(cityId, entry.item) ?? this.productionProhibition(cityId, entry.item) ?? this.itemProductionBlockReasonProvider(cityId, entry.item);
     if (externalBlockReason !== undefined) {
       entry.blockedReason = externalBlockReason;
       return false;

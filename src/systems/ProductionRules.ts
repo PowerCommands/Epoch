@@ -1,3 +1,5 @@
+import { findFunctioningDock, DOCK_PRODUCTION_REQUIREMENT } from './NavalProduction';
+import type { CityBuildings } from '../entities/CityBuildings';
 import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
 import type { Era } from '../data/technologies';
@@ -7,6 +9,7 @@ import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacit
 import { getEraRank } from './EraSystem';
 
 export interface UnitProductionRuleContext {
+  getCityBuildings?: (cityId: string) => CityBuildings;
   aircraftProductionReason?: (city: City) => string | undefined;
   strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
   unitUpkeepAffordability?: {
@@ -90,6 +93,7 @@ export function getCityUnitProductionBlockReason(
 
   if (unitType.isNaval === true) {
     if (!cityHasWaterTile(city, mapData)) return 'Requires city-owned water tile';
+    if (!findFunctioningDock(city, context.getCityBuildings?.(city.id), mapData)) return DOCK_PRODUCTION_REQUIREMENT;
   }
 
   const resourceReason = context.strategicResourceCapacitySystem?.getMissingRequirementReason(city.ownerId, unitType);

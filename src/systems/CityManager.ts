@@ -1,3 +1,4 @@
+import { getUrbanSlots, getUrbanRequirement, initializeUrbanDevelopment } from './UrbanDevelopment';
 import { City } from '../entities/City';
 import type { CityFocusType, CityProductionRhythm } from '../entities/City';
 import { CityResources } from '../entities/CityResources';
@@ -180,6 +181,7 @@ export class CityManager {
    * restoration. Caller is responsible for refreshing renderers.
    */
   restoreCity(config: {
+    urbanDevelopment?: import('../entities/City').UrbanDevelopmentLayout;
     id: string;
     name: string;
     ownerId: string;
@@ -206,6 +208,7 @@ export class CityManager {
     integrationLastProcessedRound?: number;
   }): City {
     const city = new City({
+      urbanDevelopment: config.urbanDevelopment,
       id: config.id,
       name: config.name,
       ownerId: config.ownerId,
@@ -319,11 +322,14 @@ export class CityManager {
         for (const { x, y } of city.ownedTileCoords) mapData.tiles[y][x].ownerId = cfg.nationId;
       }
 
+      initializeUrbanDevelopment(city, mapData);
       manager.addCity(city);
       for (const placement of cfg.buildings ?? []) {
         if (typeof placement.buildingId !== 'string' || placement.buildingId.length === 0) continue;
         manager.getBuildings(city.id).addEntry(placement.buildingId, false);
-        const tile = mapData.tiles[placement.r]?.[placement.q];
+        const requirement = getUrbanRequirement(placement.buildingId);
+        const slot = requirement ? getUrbanSlots(city).find(s => s.buildingId === requirement) : undefined;
+        const tile = slot ? mapData.tiles[slot.y]?.[slot.x] : mapData.tiles[placement.r]?.[placement.q];
         if (tile) tile.buildingId = placement.buildingId;
       }
     }

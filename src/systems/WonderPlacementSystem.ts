@@ -1,3 +1,4 @@
+import { getUrbanSlotAt } from './UrbanDevelopment';
 import { getWonderById } from '../data/wonders';
 import type { City } from '../entities/City';
 import type { WonderType } from '../entities/Wonder';
@@ -91,7 +92,8 @@ export class WonderPlacementSystem {
     if (coord.x === city.tileX && coord.y === city.tileY) return { status: 'invalid' };
 
     const key = this.getCoordKey(coord.x, coord.y);
-    const validSet = new Set(this.state.validCoords.map((entry) => this.getCoordKey(entry.x, entry.y)));
+    const validSet = new Set(this.getValidPlacementCoords(city, this.state.wonderId, mapData)
+      .map((entry) => this.getCoordKey(entry.x, entry.y)));
     if (!validSet.has(key)) return { status: 'invalid' };
 
     const tile = mapData.tiles[coord.y]?.[coord.x];
@@ -131,7 +133,7 @@ export class WonderPlacementSystem {
 
   finalizeReservedWonder(cityId: string, wonderId: string, mapData: MapData): Tile | null {
     const tile = this.findReservedTile(cityId, wonderId, mapData);
-    if (!tile) return null;
+    if (!tile || tile.urbanSlot) return null;
 
     tile.wonderConstruction = undefined;
     tile.wonderId = wonderId;
@@ -174,6 +176,7 @@ export class WonderPlacementSystem {
     if (tile.x === city.tileX && tile.y === city.tileY) return false;
     if (tile.ownerId !== city.ownerId) return false;
     if (!ownedSet.has(this.getCoordKey(tile.x, tile.y))) return false;
+    if (tile.urbanSlot || getUrbanSlotAt(city, tile)) return false;
     if (tile.buildingId !== undefined || tile.buildingConstruction !== undefined) return false;
     if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
     if (tile.wonderId !== undefined || tile.wonderConstruction !== undefined) return false;

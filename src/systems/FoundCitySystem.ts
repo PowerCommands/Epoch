@@ -1,3 +1,4 @@
+import { getUrbanSlots } from './UrbanDevelopment';
 import { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
 import type { MapData } from '../types/map';
@@ -105,6 +106,14 @@ export class FoundCitySystem {
     if (!FOUNDABLE_TYPES.has(tile.type)) return false;
 
     if (this.cityManager.getCityAt(unit.tileX, unit.tileY) !== undefined) return false;
+
+    const cluster = [{ x: unit.tileX, y: unit.tileY }, ...getUrbanSlots(unit)];
+    if (cluster.some(coord => {
+      const candidate = this.mapData.tiles[coord.y]?.[coord.x];
+      return !candidate || candidate.urbanSlot || candidate.buildingId || candidate.buildingConstruction
+        || candidate.improvementId || candidate.improvementConstruction || candidate.wonderId || candidate.wonderConstruction
+        || this.cityManager.getAllCities().some(c => c.ownedTileCoords.some(t => t.x === coord.x && t.y === coord.y));
+    })) return false;
 
     // A Barbarian Camp locks its tile: no nation may found a city on it while the
     // camp exists. The camp must be destroyed (which removes it) to free the tile.

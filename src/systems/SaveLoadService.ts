@@ -1,5 +1,3 @@
-import { migrateRenewableBuildings } from './RenewableBuildingMigration';
-import { BuildingPlacementSystem } from './BuildingPlacementSystem';
 import { getLeaderConfiguration } from '../data/leaderConfiguration';
 import { normalizeRivers, riverMask } from './geography/Rivers';
 import type { MapData } from '../types/map';
@@ -22,7 +20,7 @@ import type {
 import { SAVED_GAME_VERSION } from '../types/saveGame';
 import type { ScenarioInitialDiplomacyEntry } from '../types/scenario';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
-import { getBuildingUpgradeBlockReason, normalizeBuildingUpgrades } from './buildingUpgrades';
+import { getBuildingUpgradeBlockReason } from './buildingUpgrades';
 import { getUnitTypeById } from '../data/units';
 import { clampMilitaryQualityLevel } from '../data/unitQuality';
 import { getWonderById } from '../data/wonders';
@@ -248,11 +246,7 @@ export class SaveLoadService {
 
     const cities: SavedCity[] = cityManager.getAllCities().map((city) => {
       const queue = productionSystem.getQueue(city.id);
-      // Serialize working buildings as plain ids (keeps saves compact and
-      // readable by older parsers) and only broken ones as objects.
-      const buildings = cityManager.getBuildings(city.id).getAllEntries().map((entry) =>
-        entry.broken ? { buildingId: entry.buildingId, broken: true } : entry.buildingId,
-      );
+      const buildings = cityManager.getBuildings(city.id).getAllEntries();
 
       const productionQueue: SavedQueueEntry[] = queue.map((view) => ({
         item: toSavedProducible(view.item),
@@ -264,6 +258,7 @@ export class SaveLoadService {
 
       return {
         id: city.id,
+        urbanDevelopment: { requirements: [...city.urbanDevelopment!.requirements], waterMask: city.urbanDevelopment!.waterMask },
         name: city.name,
         ownerId: city.ownerId,
         tileX: city.tileX,
@@ -511,6 +506,7 @@ export class SaveLoadService {
           improvementConstruction: tile.improvementConstruction
             ? { ...tile.improvementConstruction }
             : undefined,
+          urbanSlot: tile.urbanSlot ? { ...tile.urbanSlot } : undefined,
           buildingId: tile.buildingId,
           buildingBroken: tile.buildingBroken ? true : undefined,
           buildingConstruction: tile.buildingConstruction
@@ -605,7 +601,7 @@ export class SaveLoadService {
    * Caller must refresh renderers and UI after this returns.
    */
   static apply(state: SavedGameState, context: SaveLoadContext): void {
-    state = migrateRenewableBuildings(state);
+    if (state.version !== SAVED_GAME_VERSION) throw new Error('Unsupported save format');
     // Clear any old crisis before canonical accounts/relations are replaced.
     context.mutualFoeAgreementSystem?.restore(undefined);
     if (state.leaderSelections) setActiveLeaderSelections(state.leaderSelections);
@@ -740,6 +736,7 @@ export class SaveLoadService {
         tile.improvementId = undefined;
         tile.improvementOwnerId = undefined;
         tile.improvementConstruction = undefined;
+        tile.urbanSlot = undefined;
         tile.buildingId = undefined;
         tile.buildingBroken = undefined;
         tile.buildingConstruction = undefined;
@@ -770,6 +767,7 @@ export class SaveLoadService {
       if (saved.improvementConstruction !== undefined) {
         tile.improvementConstruction = { ...saved.improvementConstruction };
       }
+      tile.urbanSlot = saved.urbanSlot ? { ...saved.urbanSlot } : undefined;
       const savedBuildingIsCityBound = saved.buildingId !== undefined
         && getBuildingById(saved.buildingId)?.placement === 'city';
       if (saved.buildingId !== undefined && !savedBuildingIsCityBound) tile.buildingId = saved.buildingId;
@@ -915,8 +913,13 @@ export class SaveLoadService {
     const cityTerritorySystem = new CityTerritorySystem(getGameSpeedById(gameSpeedId), gridSystem);
 
     for (const saved of cities) {
+      if (!saved.urbanDevelopment || saved.urbanDevelopment.requirements.length !== 6
+        || !Number.isInteger(saved.urbanDevelopment.waterMask) || saved.urbanDevelopment.waterMask < 0 || saved.urbanDevelopment.waterMask > 63) {
+        throw new Error(`Invalid urban-development layout for ${saved.id}`);
+      }
       const city = cityManager.restoreCity({
         id: saved.id,
+        urbanDevelopment: saved.urbanDevelopment,
         name: saved.name,
         ownerId: saved.ownerId,
         tileX: saved.tileX,
@@ -947,8 +950,6 @@ export class SaveLoadService {
 
       if (saved.ownedTileCoords && saved.ownedTileCoords.length > 0) {
         city.ownedTileCoords = saved.ownedTileCoords.map((coord) => ({ ...coord }));
-      } else {
-        cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
       }
       SaveLoadService.applyCityOwnedTilesToMap(city, mapData);
 
@@ -965,36 +966,10 @@ export class SaveLoadService {
 
       const buildings = cityManager.getBuildings(saved.id);
       for (const entry of saved.buildings) {
-        // Backward-compatible: a plain string is a working building; an object
-        // carries the broken flag. Unknown ids are skipped silently.
-        const id = typeof entry === 'string' ? entry : entry.buildingId;
-        const broken = typeof entry === 'string' ? false : entry.broken === true;
+        const { buildingId: id, broken } = entry;
         const def = getBuildingById(id) ?? ALL_BUILDINGS.find((b) => b.id === id);
-        if (def) buildings.addEntry(def.id, broken);
+        if (def) buildings.addEntry(def.id, broken === true);
       }
-      const removedUpgradeIds = new Set(normalizeBuildingUpgrades(buildings));
-      if (removedUpgradeIds.size > 0) {
-        for (const coord of city.ownedTileCoords) {
-          const tile = mapData.tiles[coord.y]?.[coord.x];
-          if (!tile?.buildingId || !removedUpgradeIds.has(tile.buildingId)) continue;
-          tile.buildingId = undefined;
-          tile.buildingBroken = undefined;
-        }
-      }
-
-      // Saves from the city-only airfield version already own the building.
-      // Materialize that existing investment on a free city tile, without adding capacity.
-      const airPlacement = new BuildingPlacementSystem();
-      for (const { buildingId: id } of buildings.getAllEntries()) {
-        const def = getBuildingById(id);
-        if (!def?.aircraftCapacity || city.ownedTileCoords.some(coord => mapData.tiles[coord.y]?.[coord.x]?.buildingId === id)) continue;
-        const coord = airPlacement.reserveFirstValidPlacement(city, def, mapData);
-        if (coord) {
-          const tile = airPlacement.finalizeReservedBuilding(city.id, id, mapData)!;
-          tile.buildingBroken = !buildings.hasActive(id) || undefined;
-        }
-      }
-
       const queueEntries: QueueEntry[] = [];
       for (const entry of saved.productionQueue) {
         const producible = fromSavedProducible(
@@ -1015,15 +990,12 @@ export class SaveLoadService {
           }
           continue;
         }
-        const airPlacementCoord = producible.kind === 'building' && producible.buildingType.aircraftCapacity
-          && !airPlacement.findReservedTile(city.id, producible.buildingType.id, mapData)
-          ? airPlacement.reserveFirstValidPlacement(city, producible.buildingType, mapData) : undefined;
         queueEntries.push({
           item: producible,
           accumulated: entry.accumulated,
           lockedProductionCost: entry.lockedProductionCost,
           blockedReason: entry.blockedReason,
-          placement: entry.placement ? { ...entry.placement } : airPlacementCoord,
+          placement: entry.placement ? { ...entry.placement } : undefined,
         });
         if (producible.kind === 'wonder' && entry.placement) {
           const tile = mapData.tiles[entry.placement.tileY]?.[entry.placement.tileX];

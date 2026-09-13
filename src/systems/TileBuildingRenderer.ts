@@ -1,3 +1,5 @@
+import type { City } from '../entities/City';
+import { getUrbanRequirement, MARITIME_URBAN_BUILDINGS } from './UrbanDevelopment';
 import { constructionVisualForTerrain } from './rendering/ConstructionVisual';
 import { AmbientSprites } from './rendering/AmbientSprites';
 import Phaser from 'phaser';
@@ -17,6 +19,7 @@ type TileConstructionVisual = { kind: 'building' | 'wonder'; id: string; state: 
  * Texture-load callbacks always re-resolve current state (including fog). */
 export class TileBuildingRenderer {
   private readonly sprites = new Map<string, Phaser.GameObjects.Image>();
+  private readonly waterfrontLinks = new Map<string, Phaser.GameObjects.Graphics>();
   private readonly loadingTextures = new Map<string, () => void>();
   private readonly missingTextures = new Set<string>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
@@ -24,12 +27,26 @@ export class TileBuildingRenderer {
   private visibilityPredicate: (x: number, y: number) => boolean = () => true;
   private brokenPredicate: (x: number, y: number) => boolean = () => false;
   private disposed = false;
+  private detailCityId: string | null = null;
+
+  setDetailCity(cityId: string | null): void {
+    if (this.detailCityId === cityId) return;
+    this.detailCityId = cityId;
+    this.rebuildAll();
+  }
+  private absorbedPredicate: (tile: Tile) => boolean = () => false;
+
+  setAbsorbedPredicate(predicate: (tile: Tile) => boolean): void {
+    this.absorbedPredicate = predicate;
+    this.rebuildAll();
+  }
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly tileMap: TileMap,
     private readonly mapData: MapData,
     _productionSystem: ProductionSystem,
+    private readonly getCity: (id: string) => City | undefined = () => undefined,
   ) {
     this.hexTileMaskHelper = new HexTileMaskHelper(scene, tileMap);
     this.damageEffects = new StructureDamageEffects(scene, tileMap, TILE_BUILDING_DEPTH + 0.1,
@@ -100,6 +117,16 @@ export class TileBuildingRenderer {
     if(!construction) this.ensureTexture(`tile_${visual.kind}_${visual.id}${broken ? '' : '-broken'}`,
       visual.kind === 'building' ? getBuildingSpritePath(visual.id, !broken) : getWonderSpritePath(visual.id, !broken));
     const { x, y } = this.tileMap.tileToWorld(tile.x, tile.y);
+    const city=tile.urbanSlot && this.getCity(tile.urbanSlot.cityId);
+    const maritime=MARITIME_URBAN_BUILDINGS.some(id => id === getUrbanRequirement(visual.id));
+    if(city && maritime && (tile.type===TileType.Coast || tile.type===TileType.Ocean)) {
+      let link=this.waterfrontLinks.get(key);
+      if(!link){link=this.scene.add.graphics().setDepth(TILE_BUILDING_DEPTH-.1);this.waterfrontLinks.set(key,link);}
+      const center=this.tileMap.tileToWorld(city.tileX,city.tileY),size=this.tileMap.getTileRect(tile.x,tile.y).width;
+      link.clear();link.lineStyle(size*.10,0x66563d,1);link.lineBetween(x,y,x+(center.x-x)*.52,y+(center.y-y)*.52);
+      link.lineStyle(size*.065,0xb99b66,1);link.lineBetween(x,y,x+(center.x-x)*.52,y+(center.y-y)*.52);
+    } else {this.waterfrontLinks.get(key)?.destroy();this.waterfrontLinks.delete(key);}
+
     const rect = this.tileMap.getTileRect(tile.x, tile.y);
     let sprite = this.sprites.get(key);
     if (!sprite) {
@@ -149,6 +176,7 @@ export class TileBuildingRenderer {
   }
 
   private getTileVisual(tile: Tile): TileConstructionVisual | null {
+    if (tile.urbanSlot?.cityId !== this.detailCityId && this.absorbedPredicate(tile)) return null;
     const completedState = (): VisualState => this.brokenPredicate(tile.x, tile.y) ? 'broken' : 'normal';
     if (tile.buildingConstruction) return { kind: 'building', id: tile.buildingConstruction.buildingId, state: 'building' };
     if (tile.wonderConstruction) return { kind: 'wonder', id: tile.wonderConstruction.wonderId, state: 'building' };
@@ -158,6 +186,8 @@ export class TileBuildingRenderer {
   }
 
   private clearTile(key: string): void {
+    this.waterfrontLinks.get(key)?.destroy();
+    this.waterfrontLinks.delete(key);
     const sprite = this.sprites.get(key);
     if (sprite) {
       this.hexTileMaskHelper.clearMask(sprite);

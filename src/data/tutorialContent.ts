@@ -34,7 +34,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     id: 'keyboard-shortcuts',
     title: 'Keyboard Shortcuts',
     blocks: [
-      { kind: 'paragraph', text: 'Epoch can be played almost entirely from the keyboard. The shortcuts below cover normal play, the cheat panel and the scenario editor.' },
+      { kind: 'paragraph', text: 'Epoch can be played almost entirely from the keyboard. The shortcuts below cover normal play, the debug panel and the scenario editor.' },
       { kind: 'heading', text: 'During Play' },
       {
         kind: 'list',
@@ -55,15 +55,15 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         ],
       },
       { kind: 'note', text: 'While you are typing in a text field (for example renaming a city), shortcuts are paused so your keystrokes go to the field.' },
-      { kind: 'heading', text: 'Cheat Panel' },
+      { kind: 'heading', text: 'Debug Panel' },
       {
         kind: 'list',
         items: [
-          'Ctrl + Shift + C — Open or close the cheat panel',
+          'Ctrl + Shift + D — Open or close the debug panel',
           'Enter — Run the typed command',
           'Tab — Autocomplete the current command',
           'Arrow Up / Arrow Down — Browse previously entered commands',
-          'Esc — Close the cheat panel',
+          'Esc — Close the debug panel',
         ],
       },
       { kind: 'heading', text: 'Scenario Editor' },
@@ -895,10 +895,10 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     ],
   },
   {
-    id: 'cheat-panel',
-    title: 'Cheat Panel',
+    id: 'debug-panel',
+    title: 'Debug Panel',
     blocks: [
-      { kind: 'paragraph', text: 'The Cheat Panel is a built-in console of developer tools. Open it at any time during a game with Ctrl + Shift + C, type a command, and press Enter. Press Tab to autocomplete.' },
+      { kind: 'paragraph', text: 'The Debug Panel is a built-in console of developer tools. Open it at any time during a game with Ctrl + Shift + D, type a command, and press Enter. Press Tab to autocomplete.' },
       { kind: 'paragraph', text: 'These tools are intended for:' },
       {
         kind: 'list',
@@ -946,9 +946,9 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         ],
       },
       { kind: 'note', text: 'Many players enjoy using Autoplay almost as a simulation mode — start a world, sit back, and watch history happen.' },
-      { kind: 'paragraph', text: 'Control Autoplay from the cheat console: "autoplay <rounds>" to run, and "autoplay pause", "autoplay resume" or "autoplay stop" to manage it.' },
-      { kind: 'heading', text: 'Cheat Command Reference' },
-      { kind: 'paragraph', text: 'Every cheat command currently available is listed below, generated directly from the game’s definitions:' },
+      { kind: 'paragraph', text: 'Control Autoplay from the debug console: "autoplay <rounds>" to run, and "autoplay pause", "autoplay resume" or "autoplay stop" to manage it.' },
+      { kind: 'heading', text: 'Debug Command Reference' },
+      { kind: 'paragraph', text: 'Every debug command currently available is listed below, generated directly from the game’s definitions:' },
       { kind: 'cheat-commands' },
     ],
   },

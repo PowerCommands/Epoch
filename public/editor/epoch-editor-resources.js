@@ -130,6 +130,13 @@
     ARCHAEOLOGICAL_DIG,
     UNDERWATER_ARCHAEOLOGICAL_SITE
   ];
+  var IMPROVEMENT_YIELD_TECH_BONUSES = [
+    {
+      technologyId: "fertilizer",
+      improvementIds: [FARM.id, PLANTATION.id, PASTURE.id],
+      yieldDelta: { food: 1, production: 0, gold: 0 }
+    }
+  ];
   var TERRAIN_DEFAULT_IMPROVEMENTS = {
     ["plains" /* Plains */]: FARM.id,
     ["meadow" /* Meadow */]: FARM.id,
