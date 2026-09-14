@@ -30,9 +30,10 @@ export function isBuildingObsoleteInCity(
 
 /** Shared city-local construction rule used by Human, AI and completion paths. */
 export function getBuildingUpgradeBlockReason(
-  buildings: Pick<CityBuildings, 'has'>,
+  buildings: Pick<CityBuildings, 'has'> & Partial<Pick<CityBuildings, 'isProtected'>>,
   building: BuildingType,
 ): string | undefined {
+  if (building.upgradesFrom && buildings.isProtected?.(building.upgradesFrom)) return 'Permanent Town infrastructure cannot be replaced.';
   const descendants = ALL_BUILDINGS.filter((candidate) => isUpgradeDescendant(candidate, building.id));
   const belongsToUpgradeChain = building.upgradesFrom !== undefined || descendants.length > 0;
   if (belongsToUpgradeChain && buildings.has(building.id)) {
@@ -50,6 +51,7 @@ export function getBuildingUpgradeBlockReason(
 
 /** Add the completed level and remove every earlier level in its upgrade chain. */
 export function completeBuildingUpgrade(buildings: CityBuildings, building: BuildingType): string[] {
+  if (getUpgradeAncestors(building).some(id => buildings.isProtected(id))) return [];
   buildings.add(building);
   const removed = getUpgradeAncestors(building).filter((buildingId) => buildings.remove(buildingId));
   return removed;

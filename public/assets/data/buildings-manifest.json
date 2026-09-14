@@ -338,6 +338,13 @@
       "iconPath": "assets/sprites/buildings/factory.png"
     },
     {
+      "id": "railway_station",
+      "name": "Railway Station",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/railway_station.png"
+    },
+    {
       "id": "coal_power_plant",
       "name": "Coal Power Plant",
       "era": "industrial",

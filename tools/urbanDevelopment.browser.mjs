@@ -61,7 +61,8 @@ try {
       r.productionSystem.clearProduction(city.id);
     }
 
-    for(const slot of slots.slice(0,2)){
+    window.urbanCompletionOrder=[...slots].sort((a,b)=>Number(b.buildingId==='dock')-Number(a.buildingId==='dock'));
+    for(const slot of window.urbanCompletionOrder.slice(0,2)){
       r.select(city);r.open(city);
       for(const callback of r.cityView.placementRequestCallbacks)callback(slot.buildingId);
       if(r.buildingPlacementSystem.isActive())throw new Error('Urban building opened manual placement');
@@ -96,7 +97,7 @@ try {
     const {getUrbanSlots,getSettlementStage}=await import('/src/systems/UrbanDevelopment.ts');
     const {getBuildingById}=await import('/src/data/buildings.ts');
     const stages=[];
-    for(const slot of getUrbanSlots(city).slice(2)){
+    for(const slot of window.urbanCompletionOrder.slice(2)){
       r.productionSystem.enqueue(city.id,{kind:'building',buildingType:getBuildingById(slot.buildingId)});
       const outcome=r.productionSystem.completeCurrentProduction(city.id);
       if(outcome.kind!=='completed')throw new Error(slot.buildingId+': '+JSON.stringify(outcome)+' '+r.productionSystem.getItemProductionBlockReason(city.id,{kind:'building',buildingType:getBuildingById(slot.buildingId)}));
@@ -105,7 +106,7 @@ try {
     return {smokeCount:r.cityRenderer.urbanVisual.live.get(r.cityRenderer.getCityContainer(city.id))?.smoke.length ?? 0,capacity:r.powerPlantSystem.getCityPopulationCapacity(city.id),stages,save:window.__epochDiagnostics.getSaveState(),stage:r.cityRenderer.getCityContainer(city.id).getData('settlementStage'),
       sprites:getUrbanSlots(city).filter(s=>r.tileBuildingRenderer.sprites.has(`${s.x},${s.y}`)).length};
   });
-  assert.equal(final.capacity,(coastMask&2)?13:15);assert.deepEqual(final.stages,['Village','Village','Village','City']);assert.equal(final.stage,'City');assert.equal(final.sprites,0);
+  assert.equal(final.capacity,(coastMask&2)?13:15);assert.deepEqual(final.stages,['Village','Village','Village','Town']);assert.equal(final.stage,'Town');assert.equal(final.sprites,0);
   const cityNews=final.save.historicalTimeline.filter(e=>e.type==='cityDeveloped');
   assert.equal(cityNews.length,1);assert.equal(cityNews[0].metadata.firstCity,true);
   assert.equal(result.partial.historicalTimeline.filter(e=>e.type==='cityDeveloped').length,0);
@@ -120,8 +121,8 @@ try {
     r.close();
     return {count,title,stage:r.cityRenderer.getCityContainer(c.id).getData('settlementStage')};
   });
-  assert.ok(detail.count>=6);assert.match(detail.title,/City/);assert.equal(detail.stage,'City');
-  const artwork=await page.evaluate(()=>{const r=window.urbanTest;const key=r.scene.textures.getTextureKeys().find(k=>k.startsWith('urban-city-'));return r.scene.textures.get(key).canvas.toDataURL();});
+  assert.ok(detail.count>=6);assert.match(detail.title,/Town/);assert.equal(detail.stage,'Town');
+  const artwork=await page.evaluate(()=>{const r=window.urbanTest;const key=r.scene.textures.getTextureKeys().find(k=>k.startsWith('urban-Town-'));return r.scene.textures.get(key).canvas.toDataURL();});
   await fs.writeFile('/tmp/epoch-urban-art.png',Buffer.from(artwork.split(',')[1],'base64'));
   // Capture the actual batched animation over the baked city at several times.
   const activityFrames=await page.evaluate(()=>{
@@ -153,12 +154,12 @@ try {
     for(let i=0;i<31;i++){
       const city=new City({id:'perf-'+i,name:'Test',ownerId:'nation_england',tileX:5+(i%8)*3,tileY:5+Math.floor(i/8)*3,urbanDevelopment:i%2?r.cityManager.getCity(window.urbanCityId).urbanDevelopment:undefined});
       const p=r.tileMap.tileToWorld(city.tileX,city.tileY);
-      const container=r.scene.add.container(p.x,p.y,[visual.create(city)]);visual.attach(container,city);extra.push(container);
+      const container=r.scene.add.container(p.x,p.y,[visual.create(city, 'Town')]);visual.attach(container,city, 'Town');extra.push(container);
     }
     const samples=[];
     for(let i=0;i<180;i++){const start=performance.now();visual.update(i*16);samples.push(performance.now()-start);}
     samples.sort((a,b)=>a-b);
-    const textures=r.scene.textures.getTextureKeys().filter(k=>k.startsWith('urban-city-')).length;
+    const textures=r.scene.textures.getTextureKeys().filter(k=>k.startsWith('urban-Town-')).length;
     for(const container of extra)container.destroy();
     camera.worldView.setTo(old.x,old.y,old.width,old.height);
     return {cities:before+31,p95:samples[Math.floor(samples.length*.95)],textures,remaining:visual.live.size,before};
@@ -181,7 +182,7 @@ try {
       let maritime=0;
       const c=new City({id:'visual-'+mask,name:'Coastal',ownerId:'nation_england',tileX:20,tileY:20,
         urbanDevelopment:{waterMask:mask,requirements:URBAN_SLOTS.map((s,i)=>mask&(1<<i)?MARITIME_URBAN_BUILDINGS[maritime++]:s.buildingId)}});
-      const sprite=visual.create(c),canvas=sprite.texture.canvas,ctx=canvas.getContext('2d');
+      const sprite=visual.create(c, 'Town'),canvas=sprite.texture.canvas,ctx=canvas.getContext('2d');
       const origin=r.tileMap.tileToWorld(c.tileX,c.tileY),size=r.tileMap.getTileRect(c.tileX,c.tileY).width;
       const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
       const outlines=URBAN_SLOTS.map(s=>r.tileMap.getTileOutlinePoints(c.tileX+s.dq,c.tileY+s.dr)
@@ -219,14 +220,14 @@ try {
   await fs.writeFile('/tmp/epoch-coastal-city-variants.png',Buffer.from(terrainVisuals.gallery.split(',')[1],'base64'));
   console.log('Terrain-aware rendering', {variants:terrainVisuals.variants,minOpenWater:terrainVisuals.minOpenWater});
   // Reload only the saves produced above through the actual application loader.
-  for(const [state,stage] of [[result.partial,'Village'],[final.save,'City']]) {
+  for(const [state,stage] of [[result.partial,'Village'],[final.save,'Town']]) {
     await page.goto(url+'/?epochDiagnostics=1');
     await page.waitForFunction(()=>window.__epochDiagnostics?.startSavedGame,undefined,{timeout:90000});
     const loaded=await page.evaluate(s=>window.__epochDiagnostics.startSavedGame(s),state);assert.equal(loaded.ok,true,loaded.error);
     await page.waitForFunction(()=>window.urbanTest&&window.__epochDiagnostics?.getSaveState,undefined,{timeout:90000});
     const check=await page.evaluate(id=>{const r=window.urbanTest;return {smokeCount:r.cityRenderer.urbanVisual.live.get(r.cityRenderer.getCityContainer(id))?.smoke.length ?? 0,capacity:r.powerPlantSystem.getCityPopulationCapacity(id),stage:r.cityRenderer.getCityContainer(id).getData('settlementStage'),save:window.__epochDiagnostics.getSaveState()};},state.cities[0].id);
-    if(stage==='City')assert.equal(check.smokeCount,final.smokeCount,'Rendered chimney effects survive texture reuse on reload');
-    assert.equal(check.stage,stage);assert.deepEqual(check.save.historicalTimeline.filter(e=>e.type==='cityDeveloped'),state.historicalTimeline.filter(e=>e.type==='cityDeveloped'));if(stage==='City')assert.equal(check.capacity,final.capacity);assert.deepEqual(check.save.cities.map(c=>c.urbanDevelopment),state.cities.map(c=>c.urbanDevelopment));assert.deepEqual(check.save.cities.map(c=>c.buildings),state.cities.map(c=>c.buildings));
+    if(stage==='Town')assert.equal(check.smokeCount,final.smokeCount,'Rendered chimney effects survive texture reuse on reload');
+    assert.equal(check.stage,stage);assert.deepEqual(check.save.historicalTimeline.filter(e=>e.type==='cityDeveloped'),state.historicalTimeline.filter(e=>e.type==='cityDeveloped'));if(stage==='Town')assert.equal(check.capacity,final.capacity);assert.deepEqual(check.save.cities.map(c=>c.urbanDevelopment),state.cities.map(c=>c.urbanDevelopment));assert.deepEqual(check.save.cities.map(c=>c.buildings),state.cities.map(c=>c.buildings));
     assert.deepEqual(check.save.tiles.filter(t=>t.urbanSlot).map(t=>[t.q,t.r,t.urbanSlot,t.buildingId]),state.tiles.filter(t=>t.urbanSlot).map(t=>[t.q,t.r,t.urbanSlot,t.buildingId]));
     if(coastMask)await page.evaluate(async id=>{
       const r=window.urbanTest,c=r.cityManager.getCity(id);
@@ -242,5 +243,64 @@ try {
       if(boat?.unitType.id!==WORK_BOAT.id)throw new Error('Reloaded ship did not launch from Dock');
     },state.cities[0].id);
   }
-  assert.deepEqual(errors,[]);console.log('PASS: real production, Village/City rendering and new-game partial/completed save-load');
+  const evolved = await page.evaluate(async () => {
+    const r=window.urbanTest,c=r.cityManager.getAllCities().find(c=>c.settlementStage==='Town');
+    const {ALL_TECHNOLOGIES}=await import('/src/data/technologies.ts');
+    const {getBuildingById}=await import('/src/data/buildings.ts');
+    const {CITY_DEVELOPMENT_BUILDINGS}=await import('/src/systems/UrbanDevelopment.ts');
+    const {TileType}=await import('/src/types/map.ts');
+    r.nationManager.getNation(c.ownerId).researchedTechIds=ALL_TECHNOLOGIES.map(t=>t.id);
+    // Give the fixture six ordinary valid territory tiles, outside the urban footprint.
+    for(let dx=-3;dx<=3;dx++)for(let dy=-3;dy<=3;dy++) {
+      const t=r.mapData.tiles[c.tileY+dy]?.[c.tileX+dx];
+      if(!t || t.urbanSlot || (dx===0&&dy===0) || t.buildingId || t.wonderId)continue;
+      t.type=TileType.Plains;t.ownerId=c.ownerId;t.improvementId=undefined;t.resourceId='coal';
+      if(!c.ownedTileCoords.some(p=>p.x===t.x&&p.y===t.y))c.ownedTileCoords.push({x:t.x,y:t.y});
+    }
+    r.resourceAccessSystem.invalidateResourceIndex();
+    const footprint=JSON.stringify(r.mapData.tiles.flat().filter(t=>t.urbanSlot).map(t=>[t.x,t.y,t.urbanSlot]));
+    for(const id of ['workshop',...CITY_DEVELOPMENT_BUILDINGS]) {
+      const def=getBuildingById(id);
+      r.buildingPlacementSystem.reserveFirstValidPlacement(c,def,r.mapData);
+      r.productionSystem.enqueue(c.id,{kind:'building',buildingType:def});
+      const result=r.productionSystem.completeCurrentProduction(c.id);
+      if(result.kind!=='completed')throw new Error(id+': '+JSON.stringify(result));
+    }
+    if(footprint!==JSON.stringify(r.mapData.tiles.flat().filter(t=>t.urbanSlot).map(t=>[t.x,t.y,t.urbanSlot])))throw new Error('City enlarged its reserved footprint');
+    r.cityRenderer.setVisibilityPredicate(()=>true);
+    const container=r.cityRenderer.getCityContainer(c.id),sprite=container.list.find(child=>child.getData('urbanCity'));
+    const visual=r.cityRenderer.urbanVisual;
+    container.setVisible(true);
+    const camera=r.scene.cameras.main;camera.setZoom(1.5);camera.centerOn(container.x,container.y);
+    camera.worldView.setTo(container.x-1000,container.y-1000,2000,2000);
+    const frames=[];
+    for(const time of [0,3000,7000,12000,20000,27000]) {
+      visual.update(time);
+      const source=visual.live.get(container).ink,canvas=sprite.texture.canvas;
+      const copy=r.scene.add.graphics().save().scaleCanvas(2,2).translateCanvas(canvas.width/4,canvas.height/4);
+      copy.commandBuffer.push(...source.commandBuffer);copy.restore();
+      copy.generateTexture('industrial-activity-capture',canvas.width,canvas.height);
+      const output=document.createElement('canvas');output.width=canvas.width;output.height=canvas.height;
+      const ctx=output.getContext('2d');ctx.fillStyle='#98b477';ctx.fillRect(0,0,output.width,output.height);
+      ctx.drawImage(canvas,0,0);ctx.drawImage(r.scene.textures.get('industrial-activity-capture').getSourceImage(),0,0);
+      frames.push(output.toDataURL());copy.destroy();r.scene.textures.remove('industrial-activity-capture');
+    }
+    const result={stage:c.settlementStage,rendered:container.getData('settlementStage'),key:sprite.texture.key,frames,save:window.__epochDiagnostics.getSaveState()};
+    r.open(c);
+    return result;
+  });
+  assert.equal(evolved.stage,'City');assert.equal(evolved.rendered,'City');assert.ok(evolved.key.startsWith('urban-City-'));
+  assert.ok(evolved.frames[0]!==evolved.frames[1], 'City ambient frame changes');
+  for(const [i,frame] of evolved.frames.entries())await fs.writeFile(`/tmp/epoch-industrial-city-${i}.png`,Buffer.from(frame.split(',')[1],'base64'));
+  await page.getByRole('button',{name:'Progress to next level'}).click();
+  assert.equal(await page.locator('.development-requirements > div').count(),6);
+  assert.equal(await page.locator('.development-map').count(),0);
+  assert.match(await page.locator('.settlement-progress').innerText(),/City status is permanent/);
+  await page.screenshot({path:'/tmp/epoch-city-progression.png'});
+  await page.goto(url+'/?epochDiagnostics=1');
+  await page.waitForFunction(()=>window.__epochDiagnostics?.startSavedGame);
+  assert.equal((await page.evaluate(s=>window.__epochDiagnostics.startSavedGame(s),evolved.save)).ok,true);
+  await page.waitForFunction(()=>window.urbanTest);
+  assert.equal(await page.evaluate(()=>window.urbanTest.cityManager.getAllCities().some(c=>c.settlementStage==='City')),true);
+  assert.deepEqual(errors,[]);console.log('PASS: real production, Village/Town/City rendering, progression and save-load');
 } finally {await browser.close();}

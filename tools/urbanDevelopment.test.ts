@@ -35,7 +35,7 @@ test('new Village owns six fixed slots matching hex adjacency and projected dire
   slots.forEach(s=>assert.deepEqual(map.tiles[s.y][s.x].urbanSlot,{cityId:city.id,buildingId:s.buildingId}));
 });
 
-test('human and AI complete the same slots automatically; only sixth building develops City',()=>{
+test('human and AI complete the same slots automatically; only sixth building develops Town',()=>{
   for(const ai of [false,true]){
     const {city,map,placement,buildings,territory,grid}=setup();
     city.ownerId=ai?'ai':'human';for(const s of getUrbanSlots(city))map.tiles[s.y][s.x].ownerId=city.ownerId;
@@ -46,12 +46,12 @@ test('human and AI complete the same slots automatically; only sixth building de
       const tile=placement.completePhysicalBuilding(city,def,map);assert.ok(tile);
       const slot=getUrbanSlots(city)[i];assert.deepEqual([tile.x,tile.y],[slot.x,slot.y]);
       completeBuildingUpgrade(buildings,def);
-      assert.equal(getSettlementStage(buildings),i===5?'City':'Village');
+      assert.equal(getSettlementStage(buildings),i===5?'Town':'Village');
       assert.equal(getCityViewTileBreakdown(city,slot,map,grid,territory)?.buildingName,def.name);
     });
     assert.equal(buildings.getAll().length,6);
     assert.equal(buildings.getAll().reduce((sum,id)=>sum+(getBuildingById(id)!.modifiers.productionPercent??0),0),5);
-    buildings.setBroken('forge',true);assert.equal(getSettlementStage(buildings),'City');assert.equal(buildings.hasActive('forge'),false);
+    buildings.setBroken('forge',true);assert.equal(getSettlementStage(buildings),'Town');assert.equal(buildings.hasActive('forge'),true);
   }
 });
 
@@ -74,10 +74,10 @@ test('terrain and resources remain intact; capture and existing upgrades preserv
     assert.equal(tile.type,TileType.Coast);assert.equal(tile.resourceId,'fish');
   }
   manager.transferOwnership(city.id,'captor');for(const coord of city.ownedTileCoords)map.tiles[coord.y][coord.x].ownerId='captor';
-  assert.equal(getSettlementStage(buildings),'City');
+  assert.equal(getSettlementStage(buildings),'Town');
   const workshopTile=map.tiles[4][6];workshopTile.ownerId='captor';workshopTile.buildingId='workshop';city.ownedTileCoords.push({x:6,y:4});buildings.add(getBuildingById('workshop')!);
   const upgraded=placement.completePhysicalBuilding(city,FACTORY,map);assert.ok(upgraded);
-  completeBuildingUpgrade(buildings,FACTORY);assert.equal(getSettlementStage(buildings),'City');
+  completeBuildingUpgrade(buildings,FACTORY);assert.equal(getSettlementStage(buildings),'Town');
   assert.equal(upgraded.urbanSlot,undefined);
 });
 

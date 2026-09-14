@@ -24,7 +24,31 @@ const segmentDistance=(p:CityPoint,a:CityPoint,b:CityPoint)=>{
   const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy)));
   return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);
 };
-export function drawOrganicCity(ctx:CanvasRenderingContext2D, land:CityPoint[][], size:number):CityPoint[] {
+/** Find the continuous foreground rail corridor on land, including coastal shells. */
+export function cityRailCorridor(land: CityPoint[][], size: number) {
+  const atHeight = (height: number) => {
+    const y = height * size;
+    let start = 0, bestStart = 0, bestEnd = 0, running = false;
+    for (let i = 0; i <= 280; i++) {
+      const x = (i / 100 - 1.4) * size;
+      const inside = land.some(poly => cityContains(poly, {x, y:y-.04*size}))
+        && land.some(poly => cityContains(poly, {x, y:y+.04*size}));
+      if (inside && !running) { start = x; running = true; }
+      if ((!inside || i === 280) && running) {
+        const end = x - .01 * size;
+        if (end - start > bestEnd - bestStart) { bestStart = start; bestEnd = end; }
+        running = false;
+      }
+    }
+    return {left:bestStart, right:bestEnd, y};
+  };
+  const foreground = atHeight(.62);
+  // Southern waterfronts can replace both foreground land sectors. Move the
+  // same rail corridor onto the central land tile, never across open water.
+  return foreground.right-foreground.left >= size*.6 ? foreground : atHeight(.28);
+}
+
+export function drawOrganicCity(ctx:CanvasRenderingContext2D, land:CityPoint[][], size:number, industrial=false):CityPoint[] {
   const smoke:CityPoint[]=[];
   const polygons=land.map(poly=>poly.map(p=>({x:p.x/size,y:p.y/size})));
   const inside=(p:CityPoint)=>polygons.some(poly=>cityContains(poly,p));
@@ -46,10 +70,10 @@ export function drawOrganicCity(ctx:CanvasRenderingContext2D, land:CityPoint[][]
   const urban=(p:CityPoint)=>inside(p)&&cityContains(envelope,p);
   ctx.save();ctx.beginPath();
   polygons.forEach(points=>{points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();});ctx.clip();
-  poly(envelope,'#829362');
+  poly(envelope,industrial?'#99917a':'#829362');
   for(let i=0;i<3400;i++){
     const p={x:(random()-.5)*2.9,y:(random()-.5)*2.9};if(!urban(p))continue;
-    ctx.fillStyle=random()<.5?'#9eae78':'#728656';ctx.fillRect(p.x,p.y,.013,.006);
+    ctx.fillStyle=industrial?(random()<.5?'#aca38d':'#837c69'):(random()<.5?'#9eae78':'#728656');ctx.fillRect(p.x,p.y,.013,.006);
   }
   CITY_STREETS.forEach((path,i)=>{line(path,i<2?.089:.054,'#756c55');line(path,i<2?.065:.036,'#bcac88');});
   const plaza=[{x:-.13,y:.02},{x:.18,y:-.03},{x:.32,y:.12},{x:.23,y:.30},{x:-.09,y:.32},{x:-.22,y:.19}];
@@ -61,13 +85,20 @@ export function drawOrganicCity(ctx:CanvasRenderingContext2D, land:CityPoint[][]
   }
   ctx.restore();
   type Building={x:number;y:number;w:number;d:number;h:number;angle:number;roof:string;kind:number};
-  const roofs=['#984f38','#ad6244','#784a3b','#8d4f39','#596b68','#786a52','#ba7950'];
+  const rail=cityRailCorridor(land,size);
+  const roofs=industrial?['#535d62','#687174','#6c6260','#7d5950']:['#984f38','#ad6244','#784a3b','#8d4f39','#596b68','#786a52','#ba7950'];
   const buildings:Building[]=[
     {x:-.12,y:-.08,w:.29,d:.16,h:.19,angle:-.12,roof:'#647872',kind:1},
     {x:.39,y:-.64,w:.20,d:.30,h:.20,angle:.19,roof:'#6d7772',kind:2},
     {x:-.84,y:-.39,w:.31,d:.17,h:.12,angle:.18,roof:'#874936',kind:3},
     {x:-1.03,y:.28,w:.24,d:.16,h:.12,angle:-.22,roof:'#84533e',kind:3},
   ];
+  if(industrial) {
+    buildings[0] = {...buildings[0],w:.40,h:.30,roof:'#606a70'};
+    buildings[1] = {...buildings[1],w:.30,h:.32,roof:'#5a6469'};
+    buildings[2] = {...buildings[2],w:.38,d:.22,h:.20,roof:'#555d62'};
+    buildings[3] = {...buildings[3],w:.32,h:.22,roof:'#596167'};
+  }
   const footprint=(b:Building,pad=0)=>{
     const c=Math.cos(b.angle),s=Math.sin(b.angle);
     return [[-1,-1],[1,-1],[1,1],[-1,1]].map(([x,y])=>({x:b.x+x*(b.w/2+pad)*c-y*(b.d/2+pad)*s,y:b.y+(x*(b.w/2+pad)*s+y*(b.d/2+pad)*c)*.65}));
@@ -76,11 +107,12 @@ export function drawOrganicCity(ctx:CanvasRenderingContext2D, land:CityPoint[][]
   // Stable randomness keeps the baked texture reusable between cities.
   for(let i=0;i<6500;i++){
     const x=(random()-.5)*2.8,y=(random()-.5)*2.7;
-    const b:Building={x,y,w:.12+random()*.105,d:.11+random()*.09,h:.10+random()*.12,
-      angle:(x<-.5?.14:x>.4?-.25:-.08)+(random()-.5)*.48,roof:roofs[Math.floor(random()*roofs.length)],kind:random()<.3?4:0};
-    if(!footprint(b,.015).every(urban)||cityContains(plaza,{x,y}))continue;
+    const b:Building={x,y,w:.12+random()*.105,d:.11+random()*.09,h:(industrial?.19:.10)+random()*(industrial?.16:.12),
+      angle:(x<-.5?.14:x>.4?-.25:-.08)+(random()-.5)*.48,roof:roofs[Math.floor(random()*roofs.length)],kind:random()<(industrial?0:.3)?4:0};
+    if(industrial && Math.abs(y-rail.y/size)<b.d*.4+.085 && x>rail.left/size-.1 && x<rail.right/size+.1)continue;
+    if(!footprint(b,industrial?.008:.015).every(urban)||cityContains(plaza,{x,y}))continue;
     if(CITY_STREETS.some((path,j)=>path.slice(1).some((p,k)=>segmentDistance({x,y},path[k],p)<(j<2?.05:.027)+b.d*.32)))continue;
-    if(buildings.some(a=>Math.abs(a.x-x)<(a.w+b.w)*.46 && Math.abs(a.y-y)<(a.d+b.d)*.30+.013))continue;
+    if(buildings.some(a=>Math.abs(a.x-x)<(a.w+b.w)*.46 && Math.abs(a.y-y)<(a.d+b.d)*.30+(industrial?.005:.013)))continue;
     buildings.push(b);
   }
   // Occasional garden trees along the ragged edge, never arranged by sector.
@@ -96,12 +128,13 @@ export function drawOrganicCity(ctx:CanvasRenderingContext2D, land:CityPoint[][]
     const at=(x:number,y:number,z=0)=>({x:b.x+x*c-y*s,y:b.y+(x*s+y*c)*.65-z});
     const w=b.w/2,d=b.d/2,h=b.h,r=b.w*.32;
     poly([at(-w,-d),at(w,-d),at(w+.06,d+.035),at(-w+.03,d+.035)],'#41432f55');
-    poly([at(-w,d),at(w,d),at(w,d,h),at(-w,d,h)],b.kind===1?'#d0bf96':'#c8b18a');
-    poly([at(w,-d),at(w,d),at(w,d,h),at(w,-d,h)],'#8e846c');
+    poly([at(-w,d),at(w,d),at(w,d,h),at(-w,d,h)],industrial?(b.kind===1?'#cebea4':index%3?'#ac7761':'#c7b59a'):(b.kind===1?'#d0bf96':'#c8b18a'));
+    poly([at(w,-d),at(w,d),at(w,d,h),at(w,-d,h)],industrial?'#80675b':'#8e846c');
     poly([at(-w,-d,h),at(0,-d,h+r),at(w,-d,h)],'#bda783');
     poly([at(-w-.01,-d-.01,h),at(0,-d-.01,h+r),at(0,d+.012,h+r),at(-w-.01,d+.012,h)],b.roof);
-    poly([at(0,-d-.01,h+r),at(w+.012,-d-.01,h),at(w+.012,d+.012,h),at(0,d+.012,h+r)],b.roof==='#647872'?'#4b605b':'#6c4435');
+    poly([at(0,-d-.01,h+r),at(w+.012,-d-.01,h),at(w+.012,d+.012,h),at(0,d+.012,h+r)],industrial?'#424d53':b.roof==='#647872'?'#4b605b':'#6c4435');
     line([at(0,-d-.01,h+r),at(0,d+.012,h+r)],.009,'#d0a37a');
+    if(industrial) for(let z=.02;z<h;z+=.033) line([at(-w,d+.001,z),at(w,d+.001,z)],.0025,'#d3ab8b');
     // Half-timber facades, multiple floors and small shopfronts.
     if(b.kind===4){
       for(const z of [.025,h*.52,h])line([at(-w,d,z),at(w,d,z)],.008,'#63503d');
@@ -128,7 +161,7 @@ export function drawOrganicCity(ctx:CanvasRenderingContext2D, land:CityPoint[][]
       smoke.push({x:p.x*size,y:(p.y-.047)*size});
     }
     if(b.kind===3){
-      const p={x:b.x+.01,y:b.y-.23};smoke.push({x:p.x*size,y:p.y*size});ctx.fillStyle='#75624c';ctx.fillRect(p.x-.013,p.y,.026,.13);
+      const p={x:b.x+.01,y:b.y-(industrial?.40:.23)};smoke.push({x:p.x*size,y:p.y*size});ctx.fillStyle='#75624c';ctx.fillRect(p.x-(industrial?.021:.013),p.y,industrial?.042:.026,industrial?.30:.13);
       ctx.fillStyle='#ad9776';ctx.fillRect(p.x-.02,p.y,.041,.015);
     }
   });
@@ -143,6 +176,20 @@ export function drawOrganicCity(ctx:CanvasRenderingContext2D, land:CityPoint[][]
   ctx.fillStyle='#756f5c';ctx.beginPath();ctx.ellipse(f.x,f.y,.052,.028,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='#65aaa7';ctx.beginPath();ctx.ellipse(f.x,f.y-.006,.04,.019,0,0,Math.PI*2);ctx.fill();
   ctx.fillStyle='#d4c6a1';ctx.fillRect(f.x-.009,f.y-.061,.018,.052);
+  if(industrial) {
+    // A single horizontal track, with a station platform and freight canopy.
+    const left=rail.left/size,right=rail.right/size,y=rail.y/size;
+    line([{x:left,y},{x:right,y}],.075,'#6a6255');
+    for(let x=left+.015;x<right;x+=.039) line([{x,y:y-.039},{x:x+.012,y:y+.039}],.012,'#564b3e');
+    for(const dy of [-.024,.024]) {
+      line([{x:left,y:y+dy},{x:right,y:y+dy}],.009,'#bac0b9');
+      line([{x:left,y:y+dy+.008},{x:right,y:y+dy+.008}],.004,'#454e50');
+    }
+    const center=(left+right)/2;
+    ctx.fillStyle='#c2b79d';ctx.fillRect(center-.25,y-.13,.5,.075);
+    for(const dx of [-.22,0,.22]) {ctx.fillStyle='#3e514e';ctx.fillRect(center+dx,y-.22,.011,.11);}
+    poly([{x:center-.28,y:y-.24},{x:center+.27,y:y-.24},{x:center+.30,y:y-.18},{x:center-.26,y:y-.18}],'#53666a');
+  }
   ctx.restore();
   return smoke;
 }

@@ -187,6 +187,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | recycling_center | Small rooftop exhaust and entrance activity; solar panels rigid. |
 | research_lab | Tiny antenna warning light, fixed roof mast. |
 | seaport | Basin ripples, quay activity and small pier light; cranes/buildings fixed. |
+| railway_station | Stable brick station and canopy; horizontal foreground rails. Steam locomotive arrives from left, stops four seconds, departs right, then leaves eight seconds of empty track. Wheels and connecting rod follow distance; steam follows emission position. Front wheel contact at texture y=.689. |
 | sewers | Continuous flowing highlights in the upper gutter, main arch channel and front channels; streams and splash rings at all three small outlets, with fixed masonry. |
 | shrine | Warm doorway light; no exposed flame on the roof. |
 | solar_panels | Restrained inverter indicator; panel surfaces do not pulse or deform. |

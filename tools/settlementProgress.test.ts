@@ -4,21 +4,24 @@ import { City } from '../src/entities/City';
 import { CityBuildings } from '../src/entities/CityBuildings';
 import { ALL_TECHNOLOGIES } from '../src/data/technologies';
 import { getSettlementProgress } from '../src/systems/SettlementProgress';
-import { CITY_POPULATION_CAPACITY_BONUS, URBAN_SLOTS, getSettlementStage } from '../src/systems/UrbanDevelopment';
+import { TOWN_POPULATION_CAPACITY_BONUS, URBAN_SLOTS, getSettlementStage } from '../src/systems/UrbanDevelopment';
 
 const makeCity = () => new City({ id: 'test', name: 'Malmö', ownerId: 'human', tileX: 4, tileY: 4 });
 test('progress matches completion rules and the canonical bonus', () => {
   const city = makeCity(), buildings = new CityBuildings(city.id);
   let progress = getSettlementProgress(city, buildings, () => false);
   assert.equal(progress.completed, 0);
-  assert.equal(progress.populationBonus, CITY_POPULATION_CAPACITY_BONUS);
+  assert.equal(progress.populationBonus, TOWN_POPULATION_CAPACITY_BONUS);
   assert.equal(progress.possible, true);
   for (const slot of URBAN_SLOTS) buildings.addEntry(slot.buildingId, true);
   progress = getSettlementProgress(city, buildings, () => false);
-  assert.equal(progress.completed, 6);
+  assert.equal(progress.completed, 0);
+  assert.equal(progress.from, 'Town');
+  assert.equal(progress.to, 'City');
+  assert.equal(progress.spatial, false);
   assert.equal(progress.stage, getSettlementStage(buildings, city));
-  assert.equal(progress.stage, 'City');
-  assert.deepEqual(progress.missingTechs, []);
+  assert.equal(progress.stage, 'Town');
+  assert.ok(progress.missingTechs.length > 0);
 });
 test('coastal blueprint and upgraded damaged buildings retain completion', () => {
   const city = makeCity(), buildings = new CityBuildings(city.id);
@@ -51,4 +54,20 @@ test('research includes unmet prerequisite chains and excludes researched techno
   for (const tech of ALL_TECHNOLOGIES.filter(t => missing.has(t.id))) {
     for (const prerequisite of tech.prerequisites) assert.ok(researched.has(prerequisite) || missing.has(prerequisite));
   }
+});
+
+test('transport research communicates OR instead of requiring both technologies',()=>{
+  const city=makeCity(),buildings=new CityBuildings(city.id);city.settlementStage='Town';
+  let progress=getSettlementProgress(city,buildings,()=>false);
+  assert.equal(progress.slots.length,6);
+  assert.equal(progress.slots[0].name,'Railway Station OR Seaport');
+  assert.deepEqual(progress.slots[0].alternativeTechs,['Railroad','Navigation']);
+  assert.ok(!progress.missingTechs.some(t=>t.id==='railroad'));
+  progress=getSettlementProgress(city,buildings,id=>id==='navigation');
+  assert.deepEqual(progress.slots[0].alternativeTechs,[]);
+  buildings.addEntry('seaport',true);
+  progress=getSettlementProgress(city,buildings,()=>false);
+  assert.equal(progress.slots[0].complete,true);
+  assert.equal(progress.slots[0].broken,true);
+  assert.equal(progress.slots[0].missingTech,undefined);
 });

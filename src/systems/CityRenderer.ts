@@ -146,7 +146,7 @@ export class CityRenderer {
     this.damageEffects.remove(city.id);
     this.threatGlows.delete(city.id);
     const oldContainer = this.containers.get(city.id);
-    const wasVillage = oldContainer?.getData('settlementStage') === 'Village';
+    const previousStage = oldContainer?.getData('settlementStage');
     if (oldContainer) {
       oldContainer.destroy();
       this.containers.delete(city.id);
@@ -154,7 +154,7 @@ export class CityRenderer {
 
     this.renderCity(city);
     const next = this.containers.get(city.id);
-    if (wasVillage && next?.getData('settlementStage') === 'City') {
+    if (previousStage && next && previousStage !== next.getData('settlementStage')) {
       next.setAlpha(0);
       this.scene.tweens.add({ targets: next, alpha: 1, duration: 1000 });
     }
@@ -168,8 +168,8 @@ export class CityRenderer {
     const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
 
     const stage = getSettlementStage(this.cityManager.getBuildings(city.id), city);
-    const developed = city.id !== this.detailCityId && stage === 'City';
-    const sprite = developed ? this.urbanVisual.create(city)
+    const developed = city.id !== this.detailCityId && stage !== 'Village';
+    const sprite = developed ? this.urbanVisual.create(city, stage)
       : this.scene.add.image(0, 0, getCitySpriteKey(this.getNationEra(city.ownerId), city.health <= CITY_BASE_HEALTH / 2));
     const scaleMultiplier = city.isResidenceCapital ? CAPITAL_SCALE_MULTIPLIER : 1;
     if (!developed) sprite.setDisplaySize(
@@ -205,7 +205,7 @@ export class CityRenderer {
     // Streets sit below units so movement and garrisons remain readable.
     container.setDepth(developed ? 14 : CITY_DEPTH);
     container.setData('settlementStage', stage);
-    if (developed) this.urbanVisual.attach(container, city);
+    if (developed) this.urbanVisual.attach(container, city, stage);
 
     // Interactive hit area — circle matching old behavior
     container.setSize(HIT_RADIUS * 2, HIT_RADIUS * 2);

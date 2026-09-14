@@ -135,6 +135,7 @@ export const BUILDING_AMBIENT: Record<string, AmbientProfile> = {
   police_station: p(e('light',.52,.57,.35,0xffd4a0,18)), public_school: p(e('people',.5,.79,.6)),
   recycling_center: p(e('steam',.68,.27,.45),e('people',.53,.76,.45)),
   research_lab: p(e('light',.53,.17,.3,0xd48375,13)), seaport: p(e('water',.51,.74,.85),e('light',.79,.57,.45,0xe9bb71,9),e('people',.32,.65,.6)),
+  railway_station: {effects:[],buildingActivity:'railway_station'},
   sewers: {effects:[],buildingActivity:'sewers'}, shrine: p(e('light',.59,.66,.4,0xffc482,17)),
   solar_panels: p(e('light',.72,.73,.25,0xa0c6b8,19)), solar_plant: p(e('light',.64,.61,.3,0xa0c6b8,19)),
   spaceship_factory: p(e('steam',.55,.47,.55),e('light',.53,.26,.35,0xd1c18b,13)),

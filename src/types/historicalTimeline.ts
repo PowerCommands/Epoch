@@ -67,6 +67,7 @@ export interface HistoricalEventMetadata {
   nationNames?: string[];
   leaderNames?: string[];
   firstCity?: boolean;
+  settlementStage?: 'Town' | 'City';
   cityId?: string;
   cityName?: string;
   aggressorNationId?: string;

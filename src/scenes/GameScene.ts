@@ -1,6 +1,6 @@
 import { getSettlementProgress } from '../systems/SettlementProgress';
 import { findFunctioningDock, findDockSpawnTile } from '../systems/NavalProduction';
-import { isUrbanBuilding, isAssignedUrbanBuilding, getSettlementStage, getUrbanSlots, reserveUrbanSlots, canDevelopIntoCity } from '../systems/UrbanDevelopment';
+import { isUrbanBuilding, isAssignedUrbanBuilding, getSettlementStage, getUrbanSlots, reserveUrbanSlots, canDevelopIntoTown } from '../systems/UrbanDevelopment';
 import { AmbientSprites } from '../systems/rendering/AmbientSprites';
 import { HistoricalMapRecorder } from '../systems/HistoricalMapRecorder';
 import { WorldHistoryMilestones } from '../systems/WorldHistoryMilestones';
@@ -1312,7 +1312,7 @@ export class GameScene extends Phaser.Scene {
     const tileBuildingRenderer = new TileBuildingRenderer(this, tileMap, mapData, productionSystem, id => cityManager.getCity(id));
     tileBuildingRenderer.setAbsorbedPredicate(tile => {
       const city = tile.urbanSlot && cityManager.getCity(tile.urbanSlot.cityId);
-      return !!city && getSettlementStage(cityManager.getBuildings(city.id), city) === 'City';
+      return !!city && getSettlementStage(cityManager.getBuildings(city.id), city) !== 'Village';
     });
     const tileImprovementOverlayRenderer = new TileImprovementOverlayRenderer(this, tileMap, mapData, nationManager);
     tileImprovementOverlayRenderer.rebuildAll();
@@ -1341,7 +1341,7 @@ export class GameScene extends Phaser.Scene {
     const cityView = new CityView();
     cityView.setSettlementStageProvider(id => {
       const city = cityManager.getCity(id)!;
-      return canDevelopIntoCity(city) ? getSettlementStage(cityManager.getBuildings(id), city) : 'Village · geography prevents City development';
+      return canDevelopIntoTown(city) ? getSettlementStage(cityManager.getBuildings(id), city) : 'Village · geography prevents Town development';
     });
     cityView.setSettlementProgressProvider(id => {
       const city = cityManager.getCity(id)!;
@@ -5300,7 +5300,7 @@ export class GameScene extends Phaser.Scene {
       }
       applyBuildingCompletionEffects(city, building);
       worldHistoryMilestones.developedCity(city, cityManager.getBuildings(city.id), previousStage);
-      if (isUrbanBuilding(building.id) || building.upgradesFrom) {
+      if (isUrbanBuilding(building.id) || building.upgradesFrom || previousStage !== getSettlementStage(cityManager.getBuildings(city.id), city)) {
         cityRenderer.refreshCity(city);
         for (const slot of getUrbanSlots(city)) tileBuildingRenderer.refreshTile(slot.x, slot.y);
       }
@@ -12595,6 +12595,7 @@ export class GameScene extends Phaser.Scene {
         .map(id => getBuildingById(id)).filter((b): b is NonNullable<typeof b> => !!b)
         .map(buildingType => ({ kind: 'building' as const, buildingType }))),
     ], getHighestEra(nationManager.getAllNations().map(n => eraSystem.getNationEra(n.id))),
+      cityManager.getAllCities().filter(city => getSettlementStage(cityManager.getBuildings(city.id), city) !== 'Village').map(city => city.id),
       cityManager.getAllCities().filter(city => getSettlementStage(cityManager.getBuildings(city.id), city) === 'City').map(city => city.id));
     turnManager.start();
 

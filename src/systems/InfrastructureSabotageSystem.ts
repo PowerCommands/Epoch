@@ -110,6 +110,9 @@ export class InfrastructureSabotageSystem {
    * units may damage an unbroken foreign building or world wonder.
    */
   canDestroyBuilding(unit: Unit): boolean {
+    const targetTile = this.getUnitTile(unit);
+    const targetCity = targetTile && this.findCityOwningTile(targetTile);
+    if (targetTile?.buildingId && targetCity && this.cityManager.getBuildings(targetCity.id).isProtected(targetTile.buildingId)) return false;
     if (unit.unitType.canBuildImprovements === true) {
       const tile = this.getBuilderDemolitionTile(unit);
       return tile !== undefined && tile.buildingId !== undefined

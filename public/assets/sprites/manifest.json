@@ -611,6 +611,18 @@
           "size": 78877
         },
         {
+          "name": "railway_station-broken.png",
+          "path": "/assets/sprites/buildings/railway_station-broken.png",
+          "type": "PNG",
+          "size": 49500
+        },
+        {
+          "name": "railway_station.png",
+          "path": "/assets/sprites/buildings/railway_station.png",
+          "type": "PNG",
+          "size": 43467
+        },
+        {
           "name": "recycling_center-broken.png",
           "path": "/assets/sprites/buildings/recycling_center-broken.png",
           "type": "PNG",

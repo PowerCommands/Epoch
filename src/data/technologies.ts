@@ -634,7 +634,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Links cities through heavy transport and national logistics. Opens routes toward combustion and modern ballistics.',
     prerequisites: ['steam_power', 'dynamite'],
     leadsTo: ['combustion', 'ballistics'],
-    unlocks: [],
+    unlocks: [{ kind: 'building', id: 'railway_station' }],
     // TODO: unlocks Railroad improvement.
   },
   {

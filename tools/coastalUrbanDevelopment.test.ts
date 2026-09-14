@@ -12,7 +12,7 @@ import { NationManager } from '../src/systems/NationManager.ts';
 import { CityTerritorySystem } from '../src/systems/CityTerritorySystem.ts';
 import { BuildingPlacementSystem } from '../src/systems/BuildingPlacementSystem.ts';
 import { HexGridSystem } from '../src/systems/grid/HexGridSystem.ts';
-import { getUrbanSlots, getSettlementStage, canDevelopIntoCity, URBAN_SLOTS } from '../src/systems/UrbanDevelopment.ts';
+import { getUrbanSlots, getSettlementStage, canDevelopIntoTown, URBAN_SLOTS } from '../src/systems/UrbanDevelopment.ts';
 import { getUrbanInfrastructureCandidates } from '../src/systems/ai/AIUrbanDevelopment.ts';
 import { completeBuildingUpgrade } from '../src/systems/buildingUpgrades.ts';
 import { getCityUnitProductionBlockReason } from '../src/systems/ProductionRules.ts';
@@ -71,18 +71,18 @@ test('Dock accepts only owned Coast, with normal manual placement when not an ur
   assert.equal(findFunctioningDock(h.city,h.buildings,h.map),tile);
 });
 
-test('every coastal arrangement derives six frozen requirements; 0–3 Coast permits City, 4–6 never does',()=>{
+test('every coastal arrangement derives six frozen requirements; 0–3 Coast permits Town, 4–6 never does',()=>{
   for(let mask=0;mask<64;mask++)for(const owner of ['human','ai']){
     const h=harness(mask,owner),slots=getUrbanSlots(h.city),count=slots.filter(s=>s.water).length;
     const maritime=['dock','lighthouse','harbor'];let coast=0;
     slots.forEach((slot,i)=>assert.equal(slot.buildingId,count>=4?null:mask&(1<<i)?maritime[coast++]??null:URBAN_SLOTS[i].buildingId));
-    assert.equal(canDevelopIntoCity(h.city),count<=3);
+    assert.equal(canDevelopIntoTown(h.city),count<=3);
     const requirements=slots.flatMap(s=>s.buildingId?[s.buildingId]:[]);
     assert.equal(getSettlementStage(h.buildings,h.city),'Village');
     for(const id of requirements.slice(0,-1))h.complete(id);
     assert.equal(getSettlementStage(h.buildings,h.city),'Village');
     if(requirements.length)h.complete(requirements.at(-1)!);
-    assert.equal(getSettlementStage(h.buildings,h.city),count<=3?'City':'Village');
+    assert.equal(getSettlementStage(h.buildings,h.city),count<=3?'Town':'Village');
     assert.equal(h.buildings.getAll().length,requirements.length);
     // Terrain later changing must not reinterpret the founding layout.
     for(const slot of slots)h.map.tiles[slot.y][slot.x].type=TileType.Plains;
@@ -125,31 +125,32 @@ test('ships spawn on Dock or nearest valid free water from Dock with row/column 
   assert.equal(findDockSpawnTile(dock,h.map,h.grid,valid),null);
 });
 
-test('AI proposes actual geography requirements, and no City-completion candidates for 4+ water',()=>{
+test('AI proposes actual geography requirements, and no Town-completion candidates for 4+ water',()=>{
   for(let mask=0;mask<64;mask++){
     const h=harness(mask,'ai');
     const choices=getUrbanInfrastructureCandidates(h.city,h.buildings,()=>true).map(c=>c.building.id);
-    if(!canDevelopIntoCity(h.city))assert.deepEqual(choices,['dock']);
+    if(!canDevelopIntoTown(h.city))assert.deepEqual(choices,['dock']);
     else for(const id of choices.filter(id=>id!==DOCK.id))assert.ok(getUrbanSlots(h.city).some(s=>s.buildingId===id));
     h.buildings.add(DOCK);
-    if(!canDevelopIntoCity(h.city))assert.deepEqual(getUrbanInfrastructureCandidates(h.city,h.buildings,()=>true),[]);
+    if(!canDevelopIntoTown(h.city))assert.deepEqual(getUrbanInfrastructureCandidates(h.city,h.buildings,()=>true),[]);
   }
 });
 
 test('Harbor → Seaport keeps Dock independent and satisfies the same harbor requirement',()=>{
-  const h=harness(7);for(const s of getUrbanSlots(h.city))h.complete(s.buildingId!);
+  const h=harness(7);for(const s of getUrbanSlots(h.city).slice(0,5))h.complete(s.buildingId!);
   const dock=findFunctioningDock(h.city,h.buildings,h.map);
   h.complete(SEAPORT.id);
+  h.complete(getUrbanSlots(h.city)[5].buildingId!);
   assert.equal(h.buildings.has(HARBOR.id),false);assert.equal(h.buildings.has(SEAPORT.id),true);
   assert.equal(h.buildings.has(DOCK.id),true);assert.equal(findFunctioningDock(h.city,h.buildings,h.map),dock);
-  assert.equal(getSettlementStage(h.buildings,h.city),'City');
+  assert.equal(getSettlementStage(h.buildings,h.city),'Town');
 });
 
 test('partial and completed coastal layouts, buildings and Dock capability survive new-format save/load',()=>{
   for(const mask of [0,1,3,7,18,50,15,31,63,-1])for(const partial of [true,false]){
     const h=mask===-1?harness(0,'human',0):harness(mask),slots=getUrbanSlots(h.city).filter(s=>s.buildingId);
     for(const s of partial?slots.slice(0,2):slots)h.complete(s.buildingId!);
-    if(!canDevelopIntoCity(h.city) && mask>0){
+    if(!canDevelopIntoTown(h.city) && mask>0){
       assert.ok(h.placement.reserveFirstValidPlacement(h.city,DOCK,h.map));h.complete(DOCK.id);
     }
     const context={mapKey:'test',humanNationId:'human',activeNationIds:['human'],gameSpeedId:'standard',mapData:h.map,nationManager:h.nations,cityManager:h.cities,
@@ -203,7 +204,7 @@ test('Dock capability follows city ownership without changing coastal developmen
   for(const c of h.city.ownedTileCoords)h.map.tiles[c.y][c.x].ownerId='captor';
   assert.ok(findFunctioningDock(h.city,h.buildings,h.map));
   assert.deepEqual(h.city.urbanDevelopment,layout);
-  assert.equal(getSettlementStage(h.buildings,h.city),'City');
+  assert.equal(getSettlementStage(h.buildings,h.city),'Town');
   h.map.tiles[4][5].ownerId='enemy';
   assert.equal(findFunctioningDock(h.city,h.buildings,h.map),undefined);
 });
@@ -248,7 +249,7 @@ for (const [mask, expected] of [
         destination.buildingId = undefined;
       }
     }
-    assert.equal(getSettlementStage(h.buildings, h.city), 'City');
+    assert.equal(getSettlementStage(h.buildings, h.city), 'Town');
     assert.deepEqual(new Set(h.buildings.getAll()), new Set(expected));
   });
 }
@@ -267,7 +268,7 @@ test('displaced Aqueduct and Market cannot substitute for missing Dock or Lighth
   h.complete('dock');
   assert.equal(getSettlementStage(h.buildings, h.city), 'Village');
   h.complete('lighthouse');
-  assert.equal(getSettlementStage(h.buildings, h.city), 'City');
+  assert.equal(getSettlementStage(h.buildings, h.city), 'Town');
   for (const id of ['aqueduct', 'market']) assert.ok(h.buildings.hasActive(id));
 });
 
@@ -277,7 +278,7 @@ test('a mountain in any surrounding position or 4+ water disables all reservatio
     ...URBAN_SLOTS.map((_,i)=>[0,i]), [15,-1], [31,-1], [63,-1], [2,4],
   ]) {
     const h=harness(mask,owner,mountain);
-    assert.equal(canDevelopIntoCity(h.city),false);
+    assert.equal(canDevelopIntoTown(h.city),false);
     assert.ok(getUrbanSlots(h.city).every(s=>s.buildingId===null));
     for(const coord of h.city.ownedTileCoords)assert.equal(h.map.tiles[coord.y][coord.x].urbanSlot,undefined);
     const building=getBuildingById(mask===63?'dock':'market')!;
@@ -293,7 +294,7 @@ test('a mountain in any surrounding position or 4+ water disables all reservatio
   }
 });
 
-test('City completion adds exactly five capacity: 8→13 and 10→15, without changing population', () => {
+test('Town completion adds exactly five capacity: 8→13 and 10→15, without changing population', () => {
   for(const [mask,before,after] of [[2,8,13],[0,10,15]]) {
     const h=harness(mask),power=new PowerPlantSystem(h.cities,new ResourceAccessSystem(h.map,{getAllDeals:()=>[]}),h.map,1);
     const population=h.city.population;

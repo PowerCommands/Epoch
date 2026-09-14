@@ -1,3 +1,4 @@
+import { getUrbanRequirement } from '../systems/UrbanDevelopment';
 import type { SettlementProgress } from '../systems/SettlementProgress';
 import { renderSettlementProgress } from './SettlementProgressView';
 import { ALL_UNIT_TYPES, getUnitTypeById } from '../data/units';
@@ -701,11 +702,27 @@ export class CityView {
       grid.append(button);
     }, 'No units available.', option => getUnitTypeById(option.id)?.category);
 
+    const city = this.lastRenderState?.city;
+    const progress = city && this.progressProvider?.(city.id);
+    const developmentLabel = (buildingId: string): string | undefined => {
+      if (!progress?.possible || progress.stage === progress.to) return undefined;
+      const requirementId = progress.spatial ? getUrbanRequirement(buildingId) : buildingId;
+      return progress.slots.some(slot => !slot.complete && slot.options.some(id => id === requirementId))
+        ? `${progress.to} building` : undefined;
+    };
     const buildings = this.renderProductionAccordion('buildings', 'Buildings', buildingOptions, (grid, option) => {
       const button = this.createProductionButton(
         getBuildingSpritePath(option.id),
         option.name, `${option.cost} production`, option.reason,
       );
+      const development = developmentLabel(option.id);
+      if (development) {
+        button.classList.add('city-view-development-building');
+        const caption = document.createElement('span');
+        caption.className = 'city-view-development-caption';
+        caption.textContent = development;
+        button.append(caption);
+      }
       if (placementState.active && placementState.buildingId === option.id) {
         button.classList.add('city-view-placement-button-active');
       }
@@ -718,6 +735,7 @@ export class CityView {
         `Cost: ${option.cost}`,
         `Placement: ${option.placement}`,
         option.terrainRequirement,
+        development,
         option.reason ? `Requirements: ${option.reason}` : undefined,
       ]);
       button.addEventListener('click', () => {

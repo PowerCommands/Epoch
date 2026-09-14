@@ -12,8 +12,14 @@ export const URBAN_SLOTS = [
   { position: 'lower-left', buildingId: 'market', dq: -1, dr: 1 },
   { position: 'left', buildingId: 'sewers', dq: -1, dr: 0 },
 ] as const;
-export const CITY_POPULATION_CAPACITY_BONUS = 5;
-export type SettlementStage = 'Village' | 'City';
+export const TOWN_POPULATION_CAPACITY_BONUS = 5;
+export type { SettlementStage } from '../entities/City';
+import type { SettlementStage } from '../entities/City';
+export const CITY_DEVELOPMENT_REQUIREMENTS: readonly (readonly string[])[] = [
+  ['railway_station', 'seaport'], ['university'], ['bank'], ['factory'], ['hospital'], ['opera_house'],
+];
+/** Default inland construction path; completion uses the requirement groups. */
+export const CITY_DEVELOPMENT_BUILDINGS = CITY_DEVELOPMENT_REQUIREMENTS.map(options => options[0]);
 export const MARITIME_URBAN_BUILDINGS = ['dock', 'lighthouse', 'harbor'] as const;
 export const isUrbanBuilding = (id: string): boolean => URBAN_SLOTS.some(s => s.buildingId === id) || MARITIME_URBAN_BUILDINGS.some(b => b === id);
 export const isAssignedUrbanBuilding = (city: City, id: string): boolean => getUrbanSlots(city).some(s => s.buildingId === id);
@@ -34,13 +40,14 @@ export function getUrbanSlots(city: Pick<City, 'tileX' | 'tileY'> & Partial<Pick
 
 /** Reservation geometry is authoritative even before inspecting tile metadata. */
 export function getUrbanSlotAt(city: Pick<City, 'tileX' | 'tileY'> & Partial<Pick<City, 'urbanDevelopment'>>, coord: { x: number; y: number }) {
-  if (!canDevelopIntoCity(city)) return undefined;
+  if (!canDevelopIntoTown(city)) return undefined;
   return getUrbanSlots(city).find(slot => slot.x === coord.x && slot.y === coord.y);
 }
 
 /** Physical completion counts even when damaged. Existing upgrades retain development. */
 export function getSettlementStage(buildings: CityBuildings, city?: City): SettlementStage {
-  if (city && !canDevelopIntoCity(city)) return 'Village';
+  if (city?.settlementStage === 'City') return 'City';
+  if (city && city.settlementStage === 'Village' && !canDevelopIntoTown(city)) return 'Village';
   const completed = new Set<string>();
   for (const entry of buildings.getAllEntries()) {
     let id: string | undefined = entry.buildingId;
@@ -49,10 +56,21 @@ export function getSettlementStage(buildings: CityBuildings, city?: City): Settl
       id = getBuildingById(id)?.upgradesFrom;
     }
   }
-  return (city ? getUrbanSlots(city) : URBAN_SLOTS).every(s => s.buildingId !== null && completed.has(s.buildingId)) ? 'City' : 'Village';
+  const town = city?.settlementStage === 'Town' || (city ? getUrbanSlots(city) : URBAN_SLOTS).every(s => s.buildingId !== null && completed.has(s.buildingId));
+  return town ? CITY_DEVELOPMENT_REQUIREMENTS.every(options => options.some(id => completed.has(id))) ? 'City' : 'Town' : 'Village';
 }
 
-export function canDevelopIntoCity(city: Pick<City, 'tileX' | 'tileY'> & Partial<Pick<City, 'urbanDevelopment'>>): boolean {
+/** Called on completion/restoration, before any destructive state mutation. */
+export function advanceSettlementStage(city: City, buildings: CityBuildings): void {
+  city.settlementStage = getSettlementStage(buildings, city);
+}
+
+export function isProtectedTownBuilding(city: City, buildings: CityBuildings, id: string): boolean {
+  return getSettlementStage(buildings, city) !== 'Village'
+    && getUrbanSlots(city).some(slot => slot.buildingId !== null && slot.buildingId === getUrbanRequirement(id));
+}
+
+export function canDevelopIntoTown(city: Pick<City, 'tileX' | 'tileY'> & Partial<Pick<City, 'urbanDevelopment'>>): boolean {
   const slots = getUrbanSlots(city);
   return slots.filter(s => s.water).length < 4 && slots.every(s => s.buildingId !== null);
 }
@@ -80,7 +98,7 @@ export function initializeUrbanDevelopment(city: City, map: MapData): void {
 export function reserveUrbanSlots(city: City, map: MapData): void {
   if (!city.urbanDevelopment) initializeUrbanDevelopment(city, map);
   const slots = getUrbanSlots(city);
-  const reserved = canDevelopIntoCity(city);
+  const reserved = canDevelopIntoTown(city);
   for (const slot of slots) {
     const tile = map.tiles[slot.y]?.[slot.x];
     if (!tile || (tile.urbanSlot && tile.urbanSlot.cityId !== city.id)

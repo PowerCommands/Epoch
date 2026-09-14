@@ -113,6 +113,7 @@ export class BuildingPlacementSystem {
     mapData: MapData,
   ): Tile | null {
     if (building.placement === 'city' || !building.upgradesFrom) return null;
+    if (city.settlementStage !== 'Village' && getUrbanSlots(city).some(s => s.buildingId === getUrbanRequirement(building.upgradesFrom!))) return null;
     for (const coord of city.ownedTileCoords) {
       if (coord.x === city.tileX && coord.y === city.tileY) continue;
       const tile = mapData.tiles[coord.y]?.[coord.x];

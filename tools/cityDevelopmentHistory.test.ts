@@ -37,7 +37,7 @@ test('only sixth requirement records City history, and the first worldwide is bi
     complete(c,b,milestones,'library');
     assert.equal(history.getEvents().length,beforeCount+1);
     b.remove('sewers');complete(c,b,milestones,'sewers');
-    b.setBroken('forge',true);b.setBroken('forge',false);milestones.developedCity(c,b,'City');
+    b.setBroken('forge',true);b.setBroken('forge',false);milestones.developedCity(c,b,'Town');
     c.ownerId='captor';milestones.developedCity(c,b,'Village');
     assert.equal(history.getEvents().length,beforeCount+1);
   }
@@ -47,8 +47,8 @@ test('only sixth requirement records City history, and the first worldwide is bi
     getDominationRanking:()=>['human','ai'],getNationName:id=>id,getLeaderName:id=>id,getWorldEra:()=> 'ancient',seed:'city-news'});
   const issue=paper.consumeDueIssue(11,'1000 BC')!;
   assert.equal(issue.mainArticle.eventType,'cityDeveloped');
-  assert.match(issue.mainArticle.headline,/WORLD'S FIRST CITY: LONDON/);
-  assert.ok(issue.secondaryArticles.some(a=>a.headline==='PARIS BECOMES A CITY'));
+  assert.match(issue.mainArticle.headline,/WORLD'S FIRST TOWN: LONDON/);
+  assert.ok(issue.secondaryArticles.some(a=>a.headline==='PARIS BECOMES A TOWN'));
 });
 
 test('save/load retains the first-City fact and suppresses duplicate announcements',()=>{
@@ -73,4 +73,16 @@ test('scenario Cities seed the first fact without invented history; impossible s
   const c=city('New City'),buildings=new CityBuildings(c.id);
   for(const slot of URBAN_SLOTS)complete(c,buildings,milestones,slot.buildingId);
   assert.equal(history.getEvents().length,1);assert.equal(history.getEvents()[0].metadata?.firstCity,false);
+});
+
+test('Town and City have distinct one-time history and newspaper milestones',()=>{
+  const {history,milestones}=harness(),c=city('London'),b=new CityBuildings(c.id);
+  for(const slot of URBAN_SLOTS)complete(c,b,milestones,slot.buildingId);
+  for(const id of ['railway_station','university','bank','factory','hospital','opera_house'])complete(c,b,milestones,id);
+  assert.deepEqual(history.getEvents().map(e=>e.metadata?.settlementStage),['Town','City']);
+  assert.match(history.getEvents()[1].text,/first City/);
+  milestones.developedCity(c,b,'Town');
+  assert.equal(history.getEvents().length,2);
+  const next=new WorldHistoryMilestones(history);next.initialize(milestones.getState(),[],'industrial');
+  next.developedCity(c,b,'Town');assert.equal(history.getEvents().length,2);
 });

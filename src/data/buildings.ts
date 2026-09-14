@@ -147,6 +147,7 @@ export const ZOO = building({ id: 'zoo', name: 'Zoo', era: 'renaissance', cost: 
 export const MILITARY_ACADEMY = building({ id: 'military_academy', name: 'Military Academy', era: 'industrial', cost: 300, maintenance: 1, modifiers: { militaryProductionPercent: 30 }, upgradesFrom: ARMORY.id, description: 'Military units produced in this city begin at Quality Level 4 – Elite (+60% combat power). +30% Military Unit Production.' });
 export const ARSENAL = building({ id: 'arsenal', name: 'Arsenal', era: 'industrial', placement: 'city', cost: 400, maintenance: 0, modifiers: { cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
 export const FACTORY = building({ id: 'factory', name: 'Factory', era: 'industrial', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 4, productionPercent: 10, happinessPerTurn: 1 }, description: 'Civ V BNW factory is +10% and +4 production. Requires Coal access to construct.', upgradesFrom: WORKSHOP.id });
+export const RAILWAY_STATION = building({ id: 'railway_station', name: 'Railway Station', era: 'industrial', cost: 280, maintenance: 2, modifiers: { productionPercent: 5, goldPercent: 10 }, description: '+5% Production, +10% Gold. Rail freight and passenger service connect the city to the Industrial economy.' });
 export const COAL_POWER_PLANT = building({ id: 'coal_power_plant', name: 'Coal Power Plant', era: 'industrial', cost: 300, maintenance: 0, description: `Requires Coal to construct and operate. Lifespan: 20 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.coalPowerPlant}. Active production multiplier: x2.` });
 export const OIL_POWER_PLANT = building({ id: 'oil_power_plant', name: 'Oil Power Plant', era: 'industrial', cost: 340, maintenance: 0, description: `Requires Oil to construct and operate. Lifespan: 40 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.oilPowerPlant}. Active production multiplier: x3.` });
 export const GAS_POWER_PLANT = building({ id: 'gas_power_plant', name: 'Gas Power Plant', era: 'industrial', cost: 360, maintenance: 0, description: `Requires Natural Gas to construct and operate. Lifespan: 50 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.gasPowerPlant}. Active production multiplier: x4.` });
@@ -205,7 +206,7 @@ export const ALL_BUILDINGS: BuildingType[] = [
   DOCK, LIBRARY, CIRCUS, COLOSSEUM, COURTHOUSE, TEMPLE, LIGHTHOUSE, STABLE,
   CASTLE, ARMORY, FORGE, MARKET, MINT, GARDEN, UNIVERSITY, WORKSHOP, AQUEDUCT, HARBOR, OBSERVATORY,
   OPERA_HOUSE, BANK, MUSEUM, PUBLIC_SCHOOL, SEAPORT, WINDMILL, ZOO,
-  MILITARY_ACADEMY, ARSENAL, FACTORY, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,
+  MILITARY_ACADEMY, ARSENAL, FACTORY, RAILWAY_STATION, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,
   BROADCAST_TOWER, STADIUM, MILITARY_BASE, MEDICAL_LAB,
   RESEARCH_LAB, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, NUCLEAR_SILO, POLICE_STATION, SPACESHIP_FACTORY,
 ];

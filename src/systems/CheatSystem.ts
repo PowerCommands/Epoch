@@ -491,6 +491,11 @@ export class CheatSystem {
         if (!tile) return 'No tile selected';
 
         if (args[0] === 'clear') {
+          if (tile.buildingId && context.cityManager.getAllCities().some(city =>
+            city.ownedTileCoords.some(c => c.x === tile.x && c.y === tile.y)
+            && context.cityManager.getBuildings(city.id).isProtected(tile.buildingId!))) {
+            return 'Cannot clear permanent Town infrastructure';
+          }
           const cityCenter = context.cityManager.getCityAt(position.x, position.y);
           if (cityCenter) {
             return `Cannot clear a city center (${cityCenter.name}); raze or remove the city first`;

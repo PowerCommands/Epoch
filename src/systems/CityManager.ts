@@ -1,4 +1,4 @@
-import { getUrbanSlots, getUrbanRequirement, initializeUrbanDevelopment } from './UrbanDevelopment';
+import { advanceSettlementStage, isProtectedTownBuilding, getUrbanSlots, getUrbanRequirement, initializeUrbanDevelopment } from './UrbanDevelopment';
 import { City } from '../entities/City';
 import type { CityFocusType, CityProductionRhythm } from '../entities/City';
 import { CityResources } from '../entities/CityResources';
@@ -61,7 +61,9 @@ export class CityManager {
     }
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));
-    this.buildings.set(city.id, new CityBuildings(city.id, () => this.notify({ reason: 'buildingsChanged', city })));
+    this.buildings.set(city.id, new CityBuildings(city.id, () => this.notify({ reason: 'buildingsChanged', city }),
+      id => isProtectedTownBuilding(city, this.getBuildings(city.id), id),
+      () => advanceSettlementStage(city, this.getBuildings(city.id))));
     this.notify({ reason: 'added', city });
   }
 
@@ -181,6 +183,7 @@ export class CityManager {
    * restoration. Caller is responsible for refreshing renderers.
    */
   restoreCity(config: {
+    settlementStage?: import('../entities/City').SettlementStage;
     urbanDevelopment?: import('../entities/City').UrbanDevelopmentLayout;
     id: string;
     name: string;
@@ -209,6 +212,7 @@ export class CityManager {
   }): City {
     const city = new City({
       urbanDevelopment: config.urbanDevelopment,
+      settlementStage: config.settlementStage,
       id: config.id,
       name: config.name,
       ownerId: config.ownerId,
@@ -236,7 +240,9 @@ export class CityManager {
 
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));
-    this.buildings.set(city.id, new CityBuildings(city.id, () => this.notify({ reason: 'buildingsChanged', city })));
+    this.buildings.set(city.id, new CityBuildings(city.id, () => this.notify({ reason: 'buildingsChanged', city }),
+      id => isProtectedTownBuilding(city, this.getBuildings(city.id), id),
+      () => advanceSettlementStage(city, this.getBuildings(city.id))));
     this.notify({ reason: 'restored', city });
     return city;
   }

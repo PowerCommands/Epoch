@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { drawCityWagons, drawCityFountain } from './CityStreetActivity';
-import type { City } from '../../entities/City';
+import { drawSteamLocomotive, STATION_TRACK_Y } from './StationTrain';
+import { isMapAnimationsEnabled } from '../PlayerSettings';
+import type { City, SettlementStage } from '../../entities/City';
 import type { TileMap } from '../TileMap';
 import { getUrbanSlots } from '../UrbanDevelopment';
 import { drawUrbanShore, drawWaterfrontSector, waterfrontPoint, lighthouseLight, type WaterfrontSector } from './UrbanWaterfront';
 
-import { drawOrganicCity, CITY_STREETS, CITY_FOUNTAIN, cityContains as contains, type CityPoint as Point } from './OrganicCityArtwork';
+import { cityRailCorridor, drawOrganicCity, CITY_STREETS, CITY_FOUNTAIN, cityContains as contains, type CityPoint as Point } from './OrganicCityArtwork';
 
 // Texture metadata survives scene restarts alongside Phaser's texture cache.
 const smokeByTexture = new WeakMap<Phaser.Textures.Texture, Point[]>();
@@ -13,7 +15,8 @@ const smokeByTexture = new WeakMap<Phaser.Textures.Texture, Point[]>();
 /** A single baked streetscape shared by cities at this map scale, plus one scene
  * animation loop. No actors, timers, pathfinding, or per-house display objects. */
 export class UrbanCityVisual {
-  private readonly live = new Map<Phaser.GameObjects.Container, { ink: Phaser.GameObjects.Graphics; size: number; phase: number; land: Point[][]; smoke: Point[]; waterfront: WaterfrontSector[] }>();
+  private readonly reducedMotion = typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-reduced-motion: reduce)');
+  private readonly live = new Map<Phaser.GameObjects.Container, { ink: Phaser.GameObjects.Graphics; size: number; phase: number; land: Point[][]; smoke: Point[]; waterfront: WaterfrontSector[]; industrial: boolean; rail: ReturnType<typeof cityRailCorridor> }>();
   constructor(private readonly scene: Phaser.Scene, private readonly tileMap: TileMap) {
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.update, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -22,10 +25,10 @@ export class UrbanCityVisual {
     });
   }
 
-  create(city: City): Phaser.GameObjects.Image {
+  create(city: City, stage: SettlementStage = city.settlementStage): Phaser.GameObjects.Image {
     const origin = this.tileMap.tileToWorld(city.tileX, city.tileY);
     const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
-    const key = `urban-city-${rect.width}-${rect.height}-${city.urbanDevelopment?.waterMask ?? 0}`;
+    const key = `urban-${stage}-${rect.width}-${rect.height}-${city.urbanDevelopment?.waterMask ?? 0}`;
     const width = Math.ceil(rect.width * 3 + 24);
     const height = Math.ceil(rect.height * 2.5 + 48);
     if (!this.scene.textures.exists(key)) {
@@ -39,7 +42,7 @@ export class UrbanCityVisual {
       const landCenters = centers.filter((_,i)=>i===0 || !getUrbanSlots(city)[i-1].water);
       const polygons = landCenters.map(c => this.tileMap.getTileOutlinePoints(c.x, c.y)
         .map(p => ({ x: p.x - origin.x, y: p.y - origin.y })));
-      smokeByTexture.set(texture, drawOrganicCity(ctx, polygons, unit));
+      smokeByTexture.set(texture, drawOrganicCity(ctx, polygons, unit, stage === 'City'));
       const waterfront = this.getWaterfront(city);
       drawUrbanShore(ctx, waterfront, polygons, unit);
       for (const sector of waterfront) drawWaterfrontSector(ctx, sector, unit);
@@ -58,24 +61,26 @@ export class UrbanCityVisual {
     });
   }
 
-  attach(container: Phaser.GameObjects.Container, city: City): void {
+  attach(container: Phaser.GameObjects.Container, city: City, stage: SettlementStage = city.settlementStage): void {
     const ink = this.scene.add.graphics(); container.add(ink);
     const phase = [...city.id].reduce((sum,c) => sum + c.charCodeAt(0),0);
     const origin=this.tileMap.tileToWorld(city.tileX,city.tileY);
     const land=[{x:city.tileX,y:city.tileY},...getUrbanSlots(city).filter(s=>!s.water)].map(s=>this.tileMap.getTileOutlinePoints(s.x,s.y)
       .map(p=>({x:p.x-origin.x,y:p.y-origin.y})));
     const rect=this.tileMap.getTileRect(city.tileX,city.tileY);
-    const key=`urban-city-${rect.width}-${rect.height}-${city.urbanDevelopment?.waterMask ?? 0}`;
-    this.live.set(container, { ink, land, smoke:smokeByTexture.get(this.scene.textures.get(key)) ?? [], waterfront: this.getWaterfront(city), size: this.tileMap.getTileRect(city.tileX, city.tileY).width, phase });
+    const key=`urban-${stage}-${rect.width}-${rect.height}-${city.urbanDevelopment?.waterMask ?? 0}`;
+    this.live.set(container, { ink, land, industrial: stage === 'City', rail:cityRailCorridor(land,rect.width), smoke:smokeByTexture.get(this.scene.textures.get(key)) ?? [], waterfront: this.getWaterfront(city), size: this.tileMap.getTileRect(city.tileX, city.tileY).width, phase });
     container.once(Phaser.GameObjects.Events.DESTROY, () => this.live.delete(container));
   }
 
   private update(time: number): void {
     const view = this.scene.cameras.main.worldView;
-    for (const [container, {ink,size,phase,land,smoke,waterfront}] of this.live) {
+    const animate = isMapAnimationsEnabled() && this.scene.cameras.main.zoom >= .45 && !this.reducedMotion?.matches;
+    for (const [container, {ink,size,phase,land,smoke,waterfront,industrial,rail}] of this.live) {
       if (!container.visible || container.x+size*2<view.left || container.x-size*2>view.right
         || container.y+size*2<view.top || container.y-size*2>view.bottom) continue;
       ink.clear();
+      if (!animate) continue;
       drawCityWagons(ink,size,time,phase,land);
       // Walkers use the exact crooked polylines baked into the streetscape.
       for(let i=0;i<14;i++) {
@@ -90,7 +95,7 @@ export class UrbanCityVisual {
         ink.fillStyle([0x644f40,0x9d6551,0x4f6866][i%3],.95);ink.fillRect(x,y-1.7,1.1,2);
         ink.fillStyle(0xd5b68d,1);ink.fillCircle(x+.5,y-2,.55);
       }
-      drawCityFountain(ink,size,time,CITY_FOUNTAIN);
+      if(!industrial || rail.y/size > .5) drawCityFountain(ink,size,time,CITY_FOUNTAIN);
       // Two workers per waterfront follow the same pier coordinates used by
       // the baked artwork. One batch, deterministic phases, no simulated actors.
       for (let i=0; i<waterfront.length; i++) {
@@ -110,6 +115,10 @@ export class UrbanCityVisual {
           ink.lineStyle(.65,0xc6dace,.15+.10*Math.sin(time/1700+i));
           ink.strokeEllipse(p.x,p.y+size*.025,size*.24,size*.07);
         }
+      }
+      if(industrial) {
+        const width=rail.right-rail.left;
+        drawSteamLocomotive(ink,(x,y)=>({x:rail.left+x*width,y:rail.y+.024*size+(y-STATION_TRACK_Y)*width}),width,time/1000,(phase%97)/97,1);
       }
       // Slowly dissipating workshop plumes, drawn in the same batch.
       for(let i=0;i<smoke.length;i++) for(let j=0;j<5;j++) {

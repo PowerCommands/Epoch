@@ -133,7 +133,7 @@ export class StrategicWeaponsSystem {
       city.lastTurnAttacked = this.getRound();
       city.health = Math.max(1, city.health - Math.round(config.cityDamage * modifier));
       city.population = Math.max(1, city.population - Math.floor(city.population * config.populationLoss * modifier));
-      const candidates = buildings.getAll().filter(id => id !== 'bomb_shelter' && !getBuildingById(id)?.repeatable).sort();
+      const candidates = buildings.getAll().filter(id => id !== 'bomb_shelter' && !buildings.isProtected(id) && !getBuildingById(id)?.repeatable).sort();
       for (const id of candidates.slice(0, Math.floor(candidates.length * config.buildingDamageFraction * modifier))) buildings.setBroken(id, true);
       this.cities.notifyHealthChanged(city);
     }

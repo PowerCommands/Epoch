@@ -258,6 +258,7 @@ export class SaveLoadService {
 
       return {
         id: city.id,
+        settlementStage: city.settlementStage,
         urbanDevelopment: { requirements: [...city.urbanDevelopment!.requirements], waterMask: city.urbanDevelopment!.waterMask },
         name: city.name,
         ownerId: city.ownerId,
@@ -920,6 +921,7 @@ export class SaveLoadService {
       const city = cityManager.restoreCity({
         id: saved.id,
         urbanDevelopment: saved.urbanDevelopment,
+        settlementStage: saved.settlementStage === 'Town' || saved.settlementStage === 'City' ? saved.settlementStage : 'Village',
         name: saved.name,
         ownerId: saved.ownerId,
         tileX: saved.tileX,

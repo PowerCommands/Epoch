@@ -17,7 +17,10 @@ export interface UrbanDevelopmentLayout {
   waterMask: number;
 }
 
+export type SettlementStage = 'Village' | 'Town' | 'City';
+
 export interface CityConfig {
+  settlementStage?: SettlementStage;
   urbanDevelopment?: UrbanDevelopmentLayout;
   id: string;
   name: string;
@@ -44,6 +47,8 @@ export interface CityProductionRhythm {
  * Ren data utan Phaser-beroenden. All rendering sköts av CityRenderer.
  */
 export class City {
+  /** Highest achieved stage. Ownership and infrastructure loss never lower it. */
+  settlementStage: SettlementStage;
   urbanDevelopment?: UrbanDevelopmentLayout;
   readonly id: string;
   name: string;
@@ -76,6 +81,7 @@ export class City {
   productionRhythm: CityProductionRhythm;
 
   constructor(config: CityConfig) {
+    this.settlementStage = config.settlementStage ?? 'Village';
     this.urbanDevelopment = config.urbanDevelopment ? { requirements: [...config.urbanDevelopment.requirements], waterMask: config.urbanDevelopment.waterMask } : undefined;
     this.id = config.id;
     this.name = config.name;

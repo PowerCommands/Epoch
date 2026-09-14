@@ -20,25 +20,34 @@ export class CityBuildings {
   // Insertion order is preserved by Map, which keeps serialization stable.
   private readonly buildings = new Map<string, CityBuildingEntry>();
 
-  constructor(cityId: string, private readonly onChanged: () => void = () => {}) {
+  constructor(cityId: string, private readonly onChanged: () => void = () => {},
+    private readonly protectedBuilding: (id: string) => boolean = () => false,
+    private readonly onCompleted: () => void = () => {}) {
     this.cityId = cityId;
   }
 
   /** Add a working building (or revive a previously broken one). */
   add(buildingType: BuildingType): void {
     this.buildings.set(buildingType.id, { buildingId: buildingType.id, broken: false });
+    this.onCompleted();
   }
 
   /** Restore a building with an explicit broken flag (used by save-load). */
   addEntry(buildingId: string, broken: boolean): void {
     this.buildings.set(buildingId, { buildingId, broken });
+    this.onCompleted();
   }
 
   /** Remove a building entirely. Returns true if it was present. */
   remove(buildingId: string): boolean {
+    if (this.isProtected(buildingId)) return false;
     const removed = this.buildings.delete(buildingId);
     if (removed) this.onChanged();
     return removed;
+  }
+
+  isProtected(buildingId: string): boolean {
+    return this.protectedBuilding(buildingId);
   }
 
   /** True if the building physically exists, working OR broken. */
@@ -61,6 +70,7 @@ export class CityBuildings {
    * the status actually changed (so callers can detect a no-op).
    */
   setBroken(buildingId: string, broken: boolean): boolean {
+    if (broken && this.isProtected(buildingId)) return false;
     const entry = this.buildings.get(buildingId);
     if (entry === undefined || entry.broken === broken) return false;
     entry.broken = broken;

@@ -135,6 +135,7 @@ export interface SavedConsolidationState {
 }
 
 export interface SavedCity {
+  settlementStage?: import('../entities/City').SettlementStage;
   urbanDevelopment: import('../entities/City').UrbanDevelopmentLayout;
   id: string;
   name: string;
