@@ -2,6 +2,8 @@ import { getUrbanRequirement } from '../systems/UrbanDevelopment';
 import type { SettlementProgress } from '../systems/SettlementProgress';
 import { renderSettlementProgress } from './SettlementProgressView';
 import { ALL_UNIT_TYPES, getUnitTypeById } from '../data/units';
+import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
+import { compareEras } from '../systems/EraSystem';
 import type { City } from '../entities/City';
 import { getFoodToGrow } from '../systems/CityEconomy';
 import type { CityViewTileBreakdown } from '../systems/CityViewData';
@@ -10,10 +12,13 @@ import { getBuildingSpritePath, getCorporationSpritePath, getProjectSpritePath, 
 const UNIT_FILTER_KEY = 'epoch.cityView.unitCategory';
 const UNIT_FILTERS = ['all', ...new Set(ALL_UNIT_TYPES.map(unit => unit.category))];
 
-function readUnitFilter(): string {
+const BUILDING_FILTER_KEY = 'epoch.cityView.buildingEra';
+const BUILDING_FILTERS = ['all', ...[...new Set(ALL_BUILDINGS.map(building => building.era))].sort(compareEras)];
+
+function readProductionFilter(key: string, choices: readonly string[]): string {
   try {
-    const saved = localStorage.getItem(UNIT_FILTER_KEY);
-    return saved && UNIT_FILTERS.includes(saved) ? saved : 'all';
+    const saved = localStorage.getItem(key);
+    return saved && choices.includes(saved) ? saved : 'all';
   } catch {
     return 'all';
   }
@@ -162,6 +167,8 @@ export class CityView {
   private readonly autoCloseCheckbox: HTMLInputElement;
   private readonly modeContentEl: HTMLDivElement;
   private readonly placementStatusEl: HTMLDivElement;
+  private readonly productionSearchInput: HTMLInputElement;
+  private readonly placementFeedbackEl: HTMLDivElement;
   private readonly tooltipEl: HTMLDivElement;
   private readonly hintEl: HTMLDivElement;
   private readonly closeCallbacks: CloseCallback[] = [];
@@ -177,15 +184,16 @@ export class CityView {
   private readonly queueBuyRequestCallbacks: QueueBuyRequestCallback[] = [];
   private currentCityId: string | null = null;
   private mode: CityViewMode = 'production';
-  private unitCategoryFilter = readUnitFilter();
+  private unitCategoryFilter = readProductionFilter(UNIT_FILTER_KEY, UNIT_FILTERS);
+  private buildingEraFilter = readProductionFilter(BUILDING_FILTER_KEY, BUILDING_FILTERS);
   private readonly accordionExpanded: Record<ProductionAccordionId, boolean> = {
-    units: true,
+    units: false,
     buildings: false,
     wonders: false,
     corporations: false,
     projects: false,
   };
-  private lastExpandedAccordion: ProductionAccordionId = 'units';
+  private lastExpandedAccordion: ProductionAccordionId | null = null;
   // The tile inspector overlay (per-tile debug/yield breakdown) is off by
   // default; the 🔍 toggle next to "Buy Tile" turns it on for the session.
   private tileInspectorEnabled = false;
@@ -301,6 +309,23 @@ export class CityView {
 
     this.placementStatusEl = document.createElement('div');
     this.placementStatusEl.className = 'city-view-placement city-view-current-production';
+    this.productionSearchInput = document.createElement('input');
+    this.productionSearchInput.type = 'search';
+    this.productionSearchInput.placeholder = 'Search units, buildings, wonders, corporations and projects (2+ characters)';
+    this.productionSearchInput.setAttribute('aria-label', 'Search all production options');
+    this.productionSearchInput.autocomplete = 'off';
+    this.productionSearchInput.style.cssText = 'box-sizing:border-box;width:100%;min-width:0;background:transparent;color:inherit;font:inherit;border:0;padding:4px;';
+    this.productionSearchInput.addEventListener('input', () => {
+      this.hideTooltip();
+      this.mode = 'production';
+      this.renderLastState();
+    });
+    // Typing in the search must not trigger map keyboard shortcuts.
+    for (const type of ['keydown', 'keyup']) {
+      this.productionSearchInput.addEventListener(type, event => event.stopPropagation());
+    }
+    this.placementFeedbackEl = document.createElement('div');
+    this.placementStatusEl.append(this.productionSearchInput, this.placementFeedbackEl);
 
     this.modeButtonsEl = document.createElement('div');
     this.modeButtonsEl.className = 'city-view-mode-buttons';
@@ -773,7 +798,7 @@ export class CityView {
         run: () => { for (const callback of this.placementRequestCallbacks) callback(option.id); },
       });
       grid.append(button);
-    }, 'No building placements available for this city.');
+    }, 'No building placements available for this city.', option => getBuildingById(option.id)?.era);
 
     const wonders = this.renderProductionAccordion('wonders', 'Wonders', wonderOptions, (grid, option) => {
       const button = this.createProductionButton(
@@ -904,7 +929,7 @@ export class CityView {
       ? `Placing ${placementState.buildingName}: click a cyan tile`
       : placementState.underConstructionLabel
         ? `Under construction: ${placementState.underConstructionLabel}`
-        : 'Building placement: choose a building to highlight valid tiles';
+        : '';
     statusRow.append(statusText);
 
     if (placementState.active) {
@@ -918,7 +943,9 @@ export class CityView {
       statusRow.append(cancelButton);
     }
 
-    this.placementStatusEl.replaceChildren(statusRow);
+    this.placementFeedbackEl.hidden = !statusText.textContent && !placementState.active;
+    this.placementFeedbackEl.style.marginTop = '8px';
+    this.placementFeedbackEl.replaceChildren(statusRow);
   }
 
   private renderQueueMode(queueItems: CityViewQueueItem[]): void {
@@ -946,7 +973,7 @@ export class CityView {
     this.modeContentEl.replaceChildren(section);
   }
 
-  private renderProductionAccordion<T>(
+  private renderProductionAccordion<T extends { name: string }>(
     id: ProductionAccordionId,
     title: string,
     options: T[],
@@ -954,6 +981,8 @@ export class CityView {
     emptyText: string,
     categoryForOption?: (option: T) => string | undefined,
   ): HTMLDivElement {
+    const query = this.productionSearchInput.value.trim().toLocaleLowerCase();
+    const searching = query.length > 1;
     const section = document.createElement('div');
     section.className = 'city-view-placement city-view-accordion';
 
@@ -964,19 +993,26 @@ export class CityView {
     header.textContent = `${this.accordionExpanded[id] ? '▾' : '▸'} ${title}`;
     section.append(header);
 
+    const filterChoices = id === 'buildings' ? BUILDING_FILTERS : UNIT_FILTERS;
+    const filterKey = id === 'buildings' ? BUILDING_FILTER_KEY : UNIT_FILTER_KEY;
+    const selectedFilter = () => id === 'buildings' ? this.buildingEraFilter : this.unitCategoryFilter;
     const grid = document.createElement('div');
     grid.className = 'city-view-placement-buttons city-view-production-grid';
     const renderGrid = (): void => {
       grid.replaceChildren();
-      const visible = categoryForOption && this.unitCategoryFilter !== 'all'
-        ? options.filter(option => categoryForOption(option) === this.unitCategoryFilter)
+      const visible = searching
+        ? options.filter(option => option.name.toLocaleLowerCase().includes(query))
+        : categoryForOption && selectedFilter() !== 'all'
+        ? options.filter(option => categoryForOption(option) === selectedFilter())
         : options;
       if (visible.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'city-view-placement-empty';
         empty.setAttribute('role', 'status');
-        empty.textContent = categoryForOption && this.unitCategoryFilter !== 'all'
-          ? `No #${this.unitCategoryFilter} units available in this city. Choose #all to see every unit.`
+        empty.textContent = searching
+          ? `No ${title.toLowerCase()} match “${this.productionSearchInput.value.trim()}”.`
+          : categoryForOption && selectedFilter() !== 'all'
+          ? `No #${selectedFilter()} ${title.toLowerCase()} available in this city. Choose #all to see all ${title.toLowerCase()}.`
           : emptyText;
         grid.append(empty);
       } else {
@@ -988,17 +1024,19 @@ export class CityView {
       heading.className = 'city-view-unit-heading';
       const filters = document.createElement('div');
       filters.className = 'city-view-unit-filters';
+      filters.style.display = searching ? 'none' : '';
       filters.setAttribute('role', 'group');
-      filters.setAttribute('aria-label', 'Filter units by category');
-      for (const category of UNIT_FILTERS) {
+      filters.setAttribute('aria-label', id === 'buildings' ? 'Filter buildings by era' : 'Filter units by category');
+      for (const category of filterChoices) {
         const tag = document.createElement('button');
         tag.type = 'button';
         tag.className = 'city-view-unit-filter';
         tag.textContent = `#${category}`;
-        tag.setAttribute('aria-pressed', String(this.unitCategoryFilter === category));
+        tag.setAttribute('aria-pressed', String(selectedFilter() === category));
         tag.addEventListener('click', () => {
-          this.unitCategoryFilter = category;
-          try { localStorage.setItem(UNIT_FILTER_KEY, category); } catch { /* Keep the session choice if storage is unavailable. */ }
+          if (id === 'buildings') this.buildingEraFilter = category;
+          else this.unitCategoryFilter = category;
+          try { localStorage.setItem(filterKey, category); } catch { /* Keep the session choice if storage is unavailable. */ }
           this.hideTooltip();
           this.accordionExpanded[id] = true;
           this.lastExpandedAccordion = id;
@@ -1017,9 +1055,11 @@ export class CityView {
     section.append(grid);
 
     const syncExpanded = (): void => {
-      header.textContent = `${this.accordionExpanded[id] ? '▾' : '▸'} ${title}`;
-      header.setAttribute('aria-expanded', String(this.accordionExpanded[id]));
-      grid.style.display = this.accordionExpanded[id] ? '' : 'none';
+      const expanded = searching || this.accordionExpanded[id];
+      header.textContent = `${expanded ? '▾' : '▸'} ${title}`;
+      header.setAttribute('aria-expanded', String(expanded));
+      header.disabled = searching;
+      grid.style.display = expanded ? '' : 'none';
     };
     header.addEventListener('click', () => {
       const expanded = !this.accordionExpanded[id];
