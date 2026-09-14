@@ -29,6 +29,35 @@
       ]
     },
     {
+      "nationId": "nation_australia",
+      "nationName": "Australia",
+      "color": "#00843d",
+      "secondaryColor": "#ffcd00",
+      "flagImage": "/assets/sprites/flags/australia.png",
+      "currencyName": "Australian Dollar",
+      "currencySymbol": "A$",
+      "leaderId": "leader_john_howard",
+      "leaderName": "John Howard",
+      "leaderTitle": "Prime Minister",
+      "leaderImage": "/assets/sprites/leaders/john-howard.png",
+      "leaders": [
+        {
+          "leaderId": "leader_john_howard",
+          "leaderName": "John Howard",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/john-howard.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_bob_hawke",
+          "leaderName": "Bob Hawke",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/bob-hawke.png",
+          "isDefault": false
+        }
+      ]
+    },
+    {
       "nationId": "nation_belarus",
       "nationName": "Belarus",
       "color": "#71933c",

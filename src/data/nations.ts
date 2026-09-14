@@ -14,6 +14,7 @@ export interface NationDefinition {
 }
 
 export const NATION_DEFINITIONS: readonly NationDefinition[] = [
+  { id: 'nation_australia', name: 'Australia', color: '#00843d', secondaryColor: '#ffcd00', currencyName: 'Australian Dollar', currencySymbol: 'A$', flagImage: '/assets/sprites/flags/australia.png', audioPlaylistNationId: 'nation_england' },
   {"id": "nation_nigeria", "name": "Nigeria", "color": "#008751", "secondaryColor": "#ffffff", "currencyName": "Nigerian Naira", "currencySymbol": "₦", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/nigeria.png"},
   {"id": "nation_kenya", "name": "Kenya", "color": "#bb0000", "secondaryColor": "#006600", "currencyName": "Kenyan Shilling", "currencySymbol": "KSh", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/kenya.png"},
   {"id": "nation_south_africa", "name": "South Africa", "color": "#007749", "secondaryColor": "#ffb81c", "currencyName": "South African Rand", "currencySymbol": "R", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/south-africa.png"},

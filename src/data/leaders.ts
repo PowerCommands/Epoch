@@ -1,3 +1,5 @@
+import { AUSTRALIAN_LEADERS } from './australianLeaders';
+export { JOHN_HOWARD, BOB_HAWKE } from './australianLeaders';
 import { MODERN_AFRICAN_LEADERS } from './modernAfricanLeaders';
 import { ROSTER_ALTERNATIVE_LEADERS } from './rosterAlternativeLeaders';
 import { CENTRAL_EASTERN_EUROPEAN_LEADERS } from './centralEasternEuropeanLeaders';
@@ -1018,6 +1020,7 @@ export const ADOLF_HITLER: LeaderDefinition = {
 };
 
 export const ALL_LEADERS: LeaderDefinition[] = [
+  ...AUSTRALIAN_LEADERS,
   ...DEFAULT_LEADERS,
   ...MIDDLE_EASTERN_LEADERS,
   ...ASIAN_LEADERS,

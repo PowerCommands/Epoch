@@ -120,6 +120,10 @@
       "/assets/sounds/start/theme-01.mp3",
       "/assets/sounds/start/theme-02.mp3"
     ],
+    "nation_australia": [
+      "/assets/sounds/nation_england/nation-england-theme-01.mp3",
+      "/assets/sounds/nation_england/nation-england-theme-02.mp3"
+    ],
     "nation_nigeria": [
       "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-01.mp3",
       "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-02.mp3"

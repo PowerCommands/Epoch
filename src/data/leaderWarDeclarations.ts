@@ -9,6 +9,50 @@ import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDe
  * leader checks in diplomacy code.
  */
 export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhrases>> = {
+  leader_john_howard: {
+    conquest: [
+      'Control of this position is now a matter of national security. Australia will commit its forces to take it.',
+      'We have decided to secure this strategic corridor by force. Our objectives are limited and practical.',
+    ],
+    hostility: [
+      'Your repeated hostile actions have made a dependable partnership impossible. Australia will now respond with force.',
+      'We have given negotiation every opportunity. Your continued confrontation has brought us to war.',
+    ],
+    threat: [
+      'Australia takes its security commitments seriously. Our forces will act against the danger you present.',
+      'We will not wait for this threat to overwhelm our defenses. Australia is committing its forces.',
+    ],
+    ideological: [
+      'Australia will defend its right to choose its own institutions and partnerships. Your coercion will be resisted.',
+      'You seek to dictate our national decisions. We are prepared to fight to preserve our independence.',
+    ],
+    ambition: [
+      'The government has judged that military action will secure our strategic interests. Our forces will advance.',
+      'We have decided the strategic advantage warrants action. Australia enters this war with defined objectives.',
+    ],
+  },
+  leader_bob_hawke: {
+    conquest: [
+      'Our government has decided to take this position by force. We must then negotiate a stable settlement.',
+      'We are committing our forces to secure this corridor. Its future must ultimately be settled at the negotiating table.',
+    ],
+    hostility: [
+      'Your repeated attacks on cooperation have exhausted the talks. Australia will now respond militarily.',
+      'We sought an agreement that both our peoples could live with. Continued hostility has made armed action necessary.',
+    ],
+    threat: [
+      'Prosperity requires security. Australia will defend its people against the threat your forces present.',
+      'We cannot negotiate safely under an immediate military threat. Our defenses will now be put into action.',
+    ],
+    ideological: [
+      'Our people have the right to choose their own future. Australia will resist your attempt to impose one.',
+      'Cooperation requires respect for independent decisions. Your coercion has brought us into armed conflict.',
+    ],
+    ambition: [
+      'The government has decided to pursue this strategic objective by force. We must keep a negotiated peace in sight.',
+      'We have judged that action will strengthen our position. We enter this conflict knowing the cost to our shared prosperity.',
+    ],
+  },
   ...ROSTER_ALTERNATIVE_WAR_DECLARATIONS,
   ...MODERN_AFRICAN_WAR_DECLARATIONS,
   leader_boris_johnson: {

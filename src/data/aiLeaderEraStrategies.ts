@@ -770,6 +770,8 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
 };
 
 export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] = [
+  { leaderId: 'leader_john_howard', strategiesByEra: { ancient: 'coastalFoundation', medieval: 'defensiveBuilder' } },
+  { leaderId: 'leader_bob_hawke', strategiesByEra: { ancient: 'coastalTechEconomy' } },
   {"leaderId": "leader_bola_tinubu", "strategiesByEra": {"ancient": "coastalTechEconomy"}},
   {"leaderId": "leader_goodluck_jonathan", "strategiesByEra": {"ancient": "tallGrowth"}},
   {"leaderId": "leader_william_ruto", "strategiesByEra": {"ancient": "tallGrowth"}},

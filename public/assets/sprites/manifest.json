@@ -1355,6 +1355,12 @@
       "label": "Flags",
       "assets": [
         {
+          "name": "australia.png",
+          "path": "/assets/sprites/flags/australia.png",
+          "type": "PNG",
+          "size": 19790
+        },
+        {
           "name": "kenya.png",
           "path": "/assets/sprites/flags/kenya.png",
           "type": "PNG",
@@ -1605,6 +1611,18 @@
           "path": "/assets/sprites/leaders/benjamin-netanyahu.png",
           "type": "PNG",
           "size": 357058
+        },
+        {
+          "name": "bob-hawke-room.webp",
+          "path": "/assets/sprites/leaders/bob-hawke-room.webp",
+          "type": "WEBP",
+          "size": 245084
+        },
+        {
+          "name": "bob-hawke.png",
+          "path": "/assets/sprites/leaders/bob-hawke.png",
+          "type": "PNG",
+          "size": 273556
         },
         {
           "name": "bola-tinubu-room.webp",
@@ -1929,6 +1947,18 @@
           "path": "/assets/sprites/leaders/javier-milei.png",
           "type": "PNG",
           "size": 274237
+        },
+        {
+          "name": "john-howard-room.webp",
+          "path": "/assets/sprites/leaders/john-howard-room.webp",
+          "type": "WEBP",
+          "size": 242756
+        },
+        {
+          "name": "john-howard.png",
+          "path": "/assets/sprites/leaders/john-howard.png",
+          "type": "PNG",
+          "size": 272203
         },
         {
           "name": "joseph-stalin-room.webp",

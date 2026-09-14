@@ -1,5 +1,31 @@
 {
   "cityNames": {
+    "nation_australia": [
+      "Canberra",
+      "Sydney",
+      "Melbourne",
+      "Brisbane",
+      "Perth",
+      "Adelaide",
+      "Hobart",
+      "Darwin",
+      "Newcastle",
+      "Wollongong",
+      "Geelong",
+      "Gold Coast",
+      "Townsville",
+      "Cairns",
+      "Toowoomba",
+      "Ballarat",
+      "Bendigo",
+      "Launceston",
+      "Albury",
+      "Wagga Wagga",
+      "Mackay",
+      "Rockhampton",
+      "Bunbury",
+      "Geraldton"
+    ],
     "nation_england": [
       "London",
       "York",

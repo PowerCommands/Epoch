@@ -3,6 +3,7 @@
 (() => {
   // src/data/nations.ts
   var NATION_DEFINITIONS = [
+    { id: "nation_australia", name: "Australia", color: "#00843d", secondaryColor: "#ffcd00", currencyName: "Australian Dollar", currencySymbol: "A$", flagImage: "/assets/sprites/flags/australia.png", audioPlaylistNationId: "nation_england" },
     { "id": "nation_nigeria", "name": "Nigeria", "color": "#008751", "secondaryColor": "#ffffff", "currencyName": "Nigerian Naira", "currencySymbol": "\u20A6", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/nigeria.png" },
     { "id": "nation_kenya", "name": "Kenya", "color": "#bb0000", "secondaryColor": "#006600", "currencyName": "Kenyan Shilling", "currencySymbol": "KSh", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/kenya.png" },
     { "id": "nation_south_africa", "name": "South Africa", "color": "#007749", "secondaryColor": "#ffb81c", "currencyName": "South African Rand", "currencySymbol": "R", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/south-africa.png" },
@@ -341,6 +342,87 @@
     }
     return { id: "balancedGrowth", from: void 0, source: "Default \xB7 Balanced Growth" };
   }
+
+  // src/data/australianLeaders.ts
+  var JOHN_HOWARD = {
+    id: "leader_john_howard",
+    nationId: "nation_australia",
+    isDefault: true,
+    name: "John Howard",
+    title: "Prime Minister",
+    image: "/assets/sprites/leaders/john-howard.png",
+    description: "John Howard served as Prime Minister of Australia from 1996 to 2007, leading a Liberal\u2013National Coalition government. His government pursued tax and workplace reforms and close security cooperation with the United States.",
+    ideologyId: "conservatism",
+    aiNationalAgendaId: "economic",
+    aiMilitaryDoctrineId: "navalPower",
+    covertPersonalityId: "pragmatist",
+    opportunism: false,
+    impulsiveBully: false,
+    maxPreferredCities: 5,
+    culturePriorities: ["foreign_trade", "diplomatic_service", "civil_engineering"],
+    gamesOfNationsPreferences: { traditionalFavourite: "swimming", additionalFavourite: "horse_racing" },
+    aiPersonality: {
+      aggressionBias: -12,
+      expansionBias: -22,
+      economyBias: 28,
+      cultureBias: 8,
+      diplomacyBias: 26,
+      warTolerance: 72,
+      peacePreference: 68,
+      minimumUnitsLostBeforePeace: 4,
+      casualtyToleranceRatio: 0.45,
+      resourceExploitationInterest: 4
+    },
+    diplomacyFlavor: {
+      greeting: "Australia welcomes dependable partners. Let us discuss trade, security and the interests we share.",
+      friendly: "Our partnership rests on keeping our word. You can count on Australia to take its commitments seriously.",
+      neutral: "We will judge your proposal by its practical benefits for our economy and our national security.",
+      hostile: "Your actions put stable trade and regional security at risk. Australia expects its concerns to be addressed.",
+      warDeclaration: "Our security and our commitments require action. Australia will now commit its forces.",
+      victory: "Our forces have secured their objectives. Let us establish a dependable peace and restore commerce.",
+      defeat: "We must protect our people and preserve our future. Australia is prepared to negotiate a practical settlement."
+    }
+  };
+  var BOB_HAWKE = {
+    id: "leader_bob_hawke",
+    nationId: "nation_australia",
+    isDefault: false,
+    name: "Bob Hawke",
+    title: "Prime Minister",
+    image: "/assets/sprites/leaders/bob-hawke.png",
+    description: "Bob Hawke served as Prime Minister of Australia from 1983 to 1991, leading a Labor government. His government pursued economic reform, cooperation with unions and business, and closer Asia-Pacific economic relationships.",
+    ideologyId: "globalism",
+    aiNationalAgendaId: "economic",
+    aiMilitaryDoctrineId: "defensiveModern",
+    covertPersonalityId: "merchant",
+    opportunism: false,
+    impulsiveBully: false,
+    maxPreferredCities: 5,
+    culturePriorities: ["foreign_trade", "civil_engineering", "diplomatic_service"],
+    gamesOfNationsPreferences: { traditionalFavourite: "swimming", additionalFavourite: "boxing" },
+    aiPersonality: {
+      aggressionBias: -28,
+      expansionBias: -26,
+      economyBias: 36,
+      cultureBias: 18,
+      diplomacyBias: 36,
+      warTolerance: 38,
+      peacePreference: 90,
+      minimumUnitsLostBeforePeace: 2,
+      casualtyToleranceRatio: 0.25,
+      resourceExploitationInterest: 4
+    },
+    diplomacyFlavor: {
+      greeting: "Australia has much to gain from an open conversation. Let us build prosperity through trade and cooperation.",
+      friendly: "Working together gives our businesses and workers new opportunities. Let us deepen those connections.",
+      neutral: "A sound agreement should raise living standards on both sides. Let us work through the details.",
+      hostile: "Confrontation is costing both our peoples. We should return to serious negotiations before more is lost.",
+      warDeclaration: "Negotiations have failed to protect our people. Australia will defend itself while keeping a settlement in reach.",
+      victory: "Now we must turn military success into a peace that allows both our peoples to get back to work.",
+      defeat: "Continuing this war would squander our future. Let us agree on terms and begin rebuilding."
+    }
+  };
+  var AUSTRALIAN_LEADERS = [JOHN_HOWARD, BOB_HAWKE];
 
   // src/data/modernAfricanLeaders.ts
   var MODERN_AFRICAN_LEADERS = [
@@ -4599,6 +4681,7 @@
     }
   };
   var ALL_LEADERS = [
+    ...AUSTRALIAN_LEADERS,
     ...DEFAULT_LEADERS,
     ...MIDDLE_EASTERN_LEADERS,
     ...ASIAN_LEADERS,
@@ -5742,6 +5825,8 @@
     SEA_WOLF_STRATEGY
   ];
   var LEADER_ERA_STRATEGY_PROFILES = [
+    { leaderId: "leader_john_howard", strategiesByEra: { ancient: "coastalFoundation", medieval: "defensiveBuilder" } },
+    { leaderId: "leader_bob_hawke", strategiesByEra: { ancient: "coastalTechEconomy" } },
     { "leaderId": "leader_bola_tinubu", "strategiesByEra": { "ancient": "coastalTechEconomy" } },
     { "leaderId": "leader_goodluck_jonathan", "strategiesByEra": { "ancient": "tallGrowth" } },
     { "leaderId": "leader_william_ruto", "strategiesByEra": { "ancient": "tallGrowth" } },
@@ -6632,6 +6717,50 @@
 
   // src/data/leaderWarDeclarations.ts
   var LEADER_WAR_DECLARATIONS = {
+    leader_john_howard: {
+      conquest: [
+        "Control of this position is now a matter of national security. Australia will commit its forces to take it.",
+        "We have decided to secure this strategic corridor by force. Our objectives are limited and practical."
+      ],
+      hostility: [
+        "Your repeated hostile actions have made a dependable partnership impossible. Australia will now respond with force.",
+        "We have given negotiation every opportunity. Your continued confrontation has brought us to war."
+      ],
+      threat: [
+        "Australia takes its security commitments seriously. Our forces will act against the danger you present.",
+        "We will not wait for this threat to overwhelm our defenses. Australia is committing its forces."
+      ],
+      ideological: [
+        "Australia will defend its right to choose its own institutions and partnerships. Your coercion will be resisted.",
+        "You seek to dictate our national decisions. We are prepared to fight to preserve our independence."
+      ],
+      ambition: [
+        "The government has judged that military action will secure our strategic interests. Our forces will advance.",
+        "We have decided the strategic advantage warrants action. Australia enters this war with defined objectives."
+      ]
+    },
+    leader_bob_hawke: {
+      conquest: [
+        "Our government has decided to take this position by force. We must then negotiate a stable settlement.",
+        "We are committing our forces to secure this corridor. Its future must ultimately be settled at the negotiating table."
+      ],
+      hostility: [
+        "Your repeated attacks on cooperation have exhausted the talks. Australia will now respond militarily.",
+        "We sought an agreement that both our peoples could live with. Continued hostility has made armed action necessary."
+      ],
+      threat: [
+        "Prosperity requires security. Australia will defend its people against the threat your forces present.",
+        "We cannot negotiate safely under an immediate military threat. Our defenses will now be put into action."
+      ],
+      ideological: [
+        "Our people have the right to choose their own future. Australia will resist your attempt to impose one.",
+        "Cooperation requires respect for independent decisions. Your coercion has brought us into armed conflict."
+      ],
+      ambition: [
+        "The government has decided to pursue this strategic objective by force. We must keep a negotiated peace in sight.",
+        "We have judged that action will strengthen our position. We enter this conflict knowing the cost to our shared prosperity."
+      ]
+    },
     ...ROSTER_ALTERNATIVE_WAR_DECLARATIONS,
     ...MODERN_AFRICAN_WAR_DECLARATIONS,
     leader_boris_johnson: {
