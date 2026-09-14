@@ -113,9 +113,36 @@ export class DiplomaticAffairSystem {
   }
 
   complaintReason(from: string, to: string): string | undefined {
+    // The human player may complain about any known city of another nation, at
+    // any distance and any age, with no cooldown. The AI keeps the
+    // incident-driven proximity rules (6 tiles, last 10 rounds) unchanged.
+    if (this.c.isHuman(from)) return this.humanComplaintReason(from, to);
     if (!this.available(from, to, 'settlement')) return 'A request or promise is already active, relations are unavailable, or the 20-round cooldown has not ended.';
     if (!this.findIncident(from, to)) return 'No known city founded within 6 tiles of your cities in the last 10 rounds.';
     return undefined;
+  }
+  private humanComplaintReason(from: string, to: string): string | undefined {
+    if (!this.eligible(from, to)) return 'You must have met this nation and be at peace to complain.';
+    if (this.hasActiveSettlement(from, to)) return 'A settlement complaint or promise with this nation is already active.';
+    if (!this.humanComplaintCity(from, to)) return 'This nation has no known city (its original capital aside) to complain about.';
+    return undefined;
+  }
+  private hasActiveSettlement(from: string, to: string): boolean {
+    return this.affairs.some(v => v.from === from && v.to === to && v.kind === 'settlement' && ['pending', 'promised'].includes(v.status));
+  }
+  /** The known, non-capital target city nearest to the complainant's own cities. */
+  private humanComplaintCity(from: string, to: string): AffairCity | undefined {
+    const anchors = this.ownCityPoints(from);
+    const candidates = this.c.cities().filter(c => c.ownerId === to && !c.isOriginalCapital && this.c.knowsCity(from, c));
+    if (!candidates.length) return undefined;
+    return [...candidates].sort((a, b) => this.minDistance(a, anchors) - this.minDistance(b, anchors) || a.id.localeCompare(b.id))[0];
+  }
+  private ownCityPoints(id: string): Point[] {
+    return this.c.cities().filter(c => c.ownerId === id).map(c => ({ x: c.tileX, y: c.tileY }));
+  }
+  private minDistance(city: AffairCity, anchors: Point[]): number {
+    const p = { x: city.tileX, y: city.tileY };
+    return anchors.reduce((m, a) => Math.min(m, this.c.distance(p, a)), Number.POSITIVE_INFINITY);
   }
   private findIncident(from: string, to: string): Incident | undefined {
     return [...this.incidents].reverse().find(i => i.neighbor === from && i.owner === to && !i.used
@@ -123,6 +150,7 @@ export class DiplomaticAffairSystem {
   }
   complain(from: string, to: string): DiplomaticAffair | undefined {
     if (this.complaintReason(from, to)) return;
+    if (this.c.isHuman(from)) return this.complainHuman(from, to);
     const i = this.findIncident(from, to)!;
     const city = this.c.cities().find(c => c.id === i.cityId)!;
     i.used = true;
@@ -130,6 +158,15 @@ export class DiplomaticAffairSystem {
     v.cityId = city.id; v.cityName = city.name; v.anchors = i.anchors.map(a => ({ ...a }));
     // BorderPressureSystem owns ongoing proximity penalties. This request adds
     // consequences only for the response and the subsequent promise.
+    this.record(v, `${this.c.name(from)} protested the founding of ${city.name} and requested a ${SETTLEMENT_PROMISE_TURNS}-round pause in nearby settlement.`);
+    this.deliver(v);
+    return v;
+  }
+  /** Human-initiated complaint: any known target city, protecting all the human's cities. */
+  private complainHuman(from: string, to: string): DiplomaticAffair | undefined {
+    const city = this.humanComplaintCity(from, to)!;
+    const v = this.create('settlement', from, to);
+    v.cityId = city.id; v.cityName = city.name; v.anchors = this.ownCityPoints(from);
     this.record(v, `${this.c.name(from)} protested the founding of ${city.name} and requested a ${SETTLEMENT_PROMISE_TURNS}-round pause in nearby settlement.`);
     this.deliver(v);
     return v;

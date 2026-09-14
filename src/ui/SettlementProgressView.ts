@@ -29,10 +29,11 @@ export function renderSettlementProgress(progress: SettlementProgress): HTMLElem
   if (!progress.possible) {
     text('p', 'This Village cannot develop into a Town at this location. Its founding geography does not support the six required surrounding tiles. Mountains, ocean, or four or more water tiles prevent development. Research and construction cannot remove this restriction.').className = 'development-warning';
   } else {
-    text('p', progress.stage === progress.to ? 'City development complete. City status is permanent, even if these buildings are later damaged or removed.' : `${progress.completed} / ${progress.slots.length} buildings complete. Your ${progress.from} becomes a ${progress.to} automatically when all required buildings are finished.`);
+    text('p', progress.stage === progress.to ? `${progress.to} development complete. ${progress.to} status is permanent, even if these buildings are later damaged or removed.` : `${progress.completed} / ${progress.slots.length} buildings complete. Your ${progress.from} becomes a ${progress.to} automatically when all required buildings are finished.`);
   }
   if (!progress.spatial) {
     text('p', 'Build these six requirements anywhere on normally valid tiles in this settlement’s territory. No arrangement or construction order is required.');
+    text('p', progress.slots.map(slot => slot.complete ? '■' : '□').join(' ')).setAttribute('aria-label', `${progress.completed} of six requirements completed`);
     const slots = text('div', '', root); slots.className = 'development-requirements';
     slots.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;margin:16px 0';
     for (const slot of progress.slots) {
@@ -62,7 +63,7 @@ export function renderSettlementProgress(progress: SettlementProgress): HTMLElem
     if (progress.stage !== progress.to) {
       text('h3', 'Research still needed');
       for (const slot of progress.slots) if (slot.alternativeTechs.length) {
-        text('p', `Transport research: ${slot.alternativeTechs.join(' OR ')}. Only one route is needed.`);
+        text('p', `${slot.name} research: ${slot.alternativeTechs.join(' OR ')}. Only one route is needed.`);
       }
       text('p', progress.missingTechs.length ? 'Missing technologies, including prerequisites: ' + progress.missingTechs.map(t => t.name).join(' · ') : progress.slots.some(slot => slot.alternativeTechs.length) ? 'Other required technologies have been researched.' : 'All required technologies have been researched.');
     }

@@ -65,11 +65,21 @@ test('human can complain to AI about a recent known city and AI honors its accep
   assert.ok(f.system.complaintReason('h', 'a'));
 });
 
-test('unknown, old or captured cities cannot be used for a complaint', () => {
+test('a human may complain about any known target city regardless of age, but not unknown or captured ones', () => {
   const f = fixture(); const city = f.found('a', 10); f.state.known = false;
-  assert.equal(f.system.complain('h', 'a'), undefined);
-  f.state.known = true; city.ownerId = 'h'; assert.equal(f.system.complain('h', 'a'), undefined);
-  city.ownerId = 'a'; f.state.round = 60; assert.equal(f.system.complain('h', 'a'), undefined);
+  assert.equal(f.system.complain('h', 'a'), undefined);            // unknown city: nothing to point at
+  f.state.known = true; city.ownerId = 'h';
+  assert.equal(f.system.complain('h', 'a'), undefined);            // no longer owned by the target
+  city.ownerId = 'a'; f.state.round = 200;                         // decades later, still complainable for a human
+  assert.equal(f.system.complain('h', 'a')?.status, 'promised');
+});
+
+test('a human may complain about a distant city and the promise still protects the human cities', () => {
+  const f = fixture(); f.found('a', 500);                          // far from the human capital at x=15
+  assert.equal(f.system.complain('h', 'a')?.status, 'promised');
+  assert.equal(f.system.canAISettle('a', 15, 0), false);          // shields the human's own city
+  assert.equal(f.system.canAISettle('a', 500, 0), true);          // the distant area is unaffected
+  assert.ok(f.system.complaintReason('h', 'a'));                  // a second complaint waits for the reply
 });
 
 test('AI may decline or pay compensation according to disposition and reserves', () => {

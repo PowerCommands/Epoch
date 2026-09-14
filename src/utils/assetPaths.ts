@@ -25,6 +25,8 @@ export function getUnitActionSpriteKey(unitId: string, actionId: string): string
 }
 
 export function getBuildingSpritePath(buildingId: string, broken = false): string {
+  // The civilian airport shares the existing modern aviation artwork.
+  if (buildingId === 'airport') buildingId = 'air_base';
   return `assets/sprites/buildings/${buildingId}${broken ? '-broken' : ''}.${buildingId === 'nuclear_silo' ? 'svg' : 'png'}`;
 }
 

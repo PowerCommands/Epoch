@@ -448,6 +448,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Market: +1 Trade Capacity',
           'Harbor: +2 Trade Capacity',
           'Seaport: +3 Trade Capacity',
+          'Container Port: +5 Trade Capacity (replaces Seaport)',
           'Stock Exchange: +2 Trade Capacity',
         ],
       },

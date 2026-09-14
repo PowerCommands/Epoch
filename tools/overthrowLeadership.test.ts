@@ -439,3 +439,21 @@ for (const [nationId, defaultId, alternativeId] of [
     } finally { resetLeaders(); }
   });
 }
+
+for (const [previous, next] of [['leader_john_howard', 'leader_bob_hawke'], ['leader_bob_hawke', 'leader_john_howard']]) {
+  test(`Australia overthrow ${previous} to ${next} applies live leader behavior without vassalage`, () => {
+    const nationId = 'nation_australia';
+    try {
+      setActiveLeaderSelections({ [nationId]: previous });
+      const h = harness({ target: nationId, demander: 'atk', cities: [{ id: 'canberra', ownerId: nationId, originNationId: nationId }] });
+      const result = h.system.applyCapitulation('atk', nationId, 0, false, false, { overthrowLeaderId: next });
+      assert.equal(result.accepted, true);
+      assert.equal(result.leadershipOverthrow?.previousLeaderName, getLeaderById(previous)?.name);
+      assert.equal(result.leadershipOverthrow?.newLeaderName, getLeaderById(next)?.name);
+      assert.equal(getLeaderByNationId(nationId)?.id, next);
+      assert.deepEqual(getLeaderByNationId(nationId)?.aiPersonality, getLeaderById(next)?.aiPersonality);
+      assert.equal(getLeaderByNationId(nationId)?.ideologyId, getLeaderById(next)?.ideologyId);
+      assert.equal(h.vassalHosts.has(nationId), false);
+    } finally { resetLeaders(); }
+  });
+}

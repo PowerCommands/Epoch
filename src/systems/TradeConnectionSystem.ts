@@ -15,7 +15,7 @@ export type TradeConnectionValidationResult =
 /**
  * Trade capacity every city has before any buildings, so early trade and
  * diplomacy are reachable without first constructing commercial/port buildings.
- * Building bonuses (Market, Harbor, Seaport, Stock Exchange) add on top.
+ * Building bonuses (Market, Harbor/Seaport/Container Port, Stock Exchange) add on top.
  */
 export const BASE_CITY_TRADE_CAPACITY = 1;
 

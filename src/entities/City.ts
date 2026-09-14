@@ -17,7 +17,7 @@ export interface UrbanDevelopmentLayout {
   waterMask: number;
 }
 
-export type SettlementStage = 'Village' | 'Town' | 'City';
+export type SettlementStage = 'Village' | 'Town' | 'City' | 'Metropolis';
 
 export interface CityConfig {
   settlementStage?: SettlementStage;

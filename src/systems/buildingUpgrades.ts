@@ -18,6 +18,17 @@ function isUpgradeDescendant(candidate: BuildingType, buildingId: string): boole
   return getUpgradeAncestors(candidate).includes(buildingId);
 }
 
+/** Existing infrastructure requirements survive replacement by a later level. */
+export function buildingFulfillsRequirement(candidateId: string, requiredId: string): boolean {
+  if (candidateId === requiredId) return true;
+  const candidate = ALL_BUILDINGS.find(building => building.id === candidateId);
+  return candidate !== undefined && isUpgradeDescendant(candidate, requiredId);
+}
+
+export function hasActiveBuildingOrUpgrade(buildings: Pick<CityBuildings, 'getAll'>, requiredId: string): boolean {
+  return buildings.getAll().some(id => buildingFulfillsRequirement(id, requiredId));
+}
+
 /** True when this building has already been superseded in the given city. */
 export function isBuildingObsoleteInCity(
   buildings: Pick<CityBuildings, 'has'>,

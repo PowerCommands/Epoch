@@ -1,3 +1,4 @@
+import { AUSTRALIAN_LEADERS } from '../src/data/australianLeaders';
 import { MODERN_AFRICAN_LEADERS } from '../src/data/modernAfricanLeaders';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -29,7 +30,7 @@ const json = (path: string) => JSON.parse(fs.readFileSync(path, 'utf8'));
 
 test('every playable nation has alternatives, unchanged defaults, and no unnecessary additions', () => {
   assert.equal(ROSTER_ALTERNATIVE_LEADERS.length, 27);
-  assert.equal(NATION_DEFINITIONS.length, audit.length + MODERN_AFRICAN_LEADERS.filter(l => l.isDefault).length);
+  assert.equal(NATION_DEFINITIONS.length, audit.length + MODERN_AFRICAN_LEADERS.filter(l => l.isDefault).length + AUSTRALIAN_LEADERS.filter(l => l.isDefault).length);
   assert.equal(new Set(ALL_LEADERS.map(l => l.id)).size, ALL_LEADERS.length);
   for (const leader of ALL_LEADERS) assert.ok(getNationDefinitionById(leader.nationId), leader.id);
   for (const nation of NATION_DEFINITIONS) {

@@ -94,7 +94,7 @@ export const CIRCUS = building({ id: 'circus', name: 'Circus', era: 'classical',
 export const COLOSSEUM = building({ id: 'colosseum', name: 'Colosseum', era: 'classical', cost: 100, maintenance: 1, modifiers: { happinessPerTurn: 5 } });
 export const COURTHOUSE = building({ id: 'courthouse', name: 'Courthouse', era: 'classical', cost: 100, maintenance: 4, description: 'Occupied-city unhappiness omitted', modifiers: { happinessPerTurn: 2} });
 export const TEMPLE = building({ id: 'temple', name: 'Temple', era: 'classical', cost: 100, maintenance: 2, modifiers: { culturePerTurn: 5 }, description: '+5 Culture per turn', upgradesFrom: SHRINE.id });
-/** Basic naval infrastructure, independent of the Harbor → Seaport chain. */
+/** Basic naval infrastructure, independent of the Harbor → Seaport → Container Port chain. */
 export const DOCK = building({ id: 'dock', name: 'Dock', era: 'ancient', placement: 'water',
   allowedTerrains: [TileType.Coast], cost: 60, maintenance: 1,
   description: 'Allows this city to build boats and ships. Naval units launch from the Dock. Requires Sailing.' });
@@ -148,6 +148,12 @@ export const MILITARY_ACADEMY = building({ id: 'military_academy', name: 'Milita
 export const ARSENAL = building({ id: 'arsenal', name: 'Arsenal', era: 'industrial', placement: 'city', cost: 400, maintenance: 0, modifiers: { cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
 export const FACTORY = building({ id: 'factory', name: 'Factory', era: 'industrial', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 4, productionPercent: 10, happinessPerTurn: 1 }, description: 'Civ V BNW factory is +10% and +4 production. Requires Coal access to construct.', upgradesFrom: WORKSHOP.id });
 export const RAILWAY_STATION = building({ id: 'railway_station', name: 'Railway Station', era: 'industrial', cost: 280, maintenance: 2, modifiers: { productionPercent: 5, goldPercent: 10 }, description: '+5% Production, +10% Gold. Rail freight and passenger service connect the city to the Industrial economy.' });
+export const CONTAINER_PORT = building({
+  id: 'container_port', name: 'Container Port', era: 'industrial', placement: 'water',
+  cost: 400, maintenance: 3, upgradesFrom: SEAPORT.id,
+  modifiers: { productionPerTurn: 2, goldPerTurn: 2, productionPercent: 10, happinessPerTurn: 2, tradeCapacity: 5 },
+  description: '+2 Production per turn, +2 Gold per turn, +10% Production, +2 Happiness, +5 Trade Capacity. Replaces Seaport.',
+});
 export const COAL_POWER_PLANT = building({ id: 'coal_power_plant', name: 'Coal Power Plant', era: 'industrial', cost: 300, maintenance: 0, description: `Requires Coal to construct and operate. Lifespan: 20 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.coalPowerPlant}. Active production multiplier: x2.` });
 export const OIL_POWER_PLANT = building({ id: 'oil_power_plant', name: 'Oil Power Plant', era: 'industrial', cost: 340, maintenance: 0, description: `Requires Oil to construct and operate. Lifespan: 40 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.oilPowerPlant}. Active production multiplier: x3.` });
 export const GAS_POWER_PLANT = building({ id: 'gas_power_plant', name: 'Gas Power Plant', era: 'industrial', cost: 360, maintenance: 0, description: `Requires Natural Gas to construct and operate. Lifespan: 50 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.gasPowerPlant}. Active production multiplier: x4.` });
@@ -196,17 +202,18 @@ export const SPACESHIP_FACTORY = building({ id: 'spaceship_factory', name: 'Spac
 
 export const NUCLEAR_SILO = building({ id: 'nuclear_silo', placement: 'city', name: 'Nuclear Silo', era: 'information', cost: 450, maintenance: 8, description: 'Land launch base for Nuclear Missiles stationed on this city tile. Must be working to launch. Missiles consume Uranium and obey the Non-Proliferation Treaty.', modifiers: {} });
 
+export const AIRPORT = building({ id: 'airport', name: 'Airport', era: 'modern', placement: 'land', cost: 500, maintenance: 4, aircraftCapacity: 4, description: 'Major civilian airport. Aircraft Capacity: 4. Fulfills the Airport OR Container Port requirement for Metropolis.' });
 export const AIRFIELD = building({ id: 'airfield', name: 'Airfield', era: 'industrial', placement: 'land', cost: 250, maintenance: 3, aircraftCapacity: 2, description: 'Aircraft Capacity: 2. Bases aircraft for missions and interception.' });
 export const AIR_BASE = building({ id: 'air_base', name: 'Air Base', era: 'modern', placement: 'land', cost: 400, maintenance: 5, aircraftCapacity: 4, upgradesFrom: AIRFIELD.id, canBuildWithoutPredecessor: true, description: 'Aircraft Capacity: 4 total. Replaces Airfield.' });
 
 export const ALL_BUILDINGS: BuildingType[] = [
   ...RENEWABLE_BUILDINGS,
-  AIRFIELD, AIR_BASE,
+  AIRFIELD, AIR_BASE, AIRPORT,
   MONUMENT, GRANARY, SHRINE, BARRACKS, WALLS, WATER_MILL, STONE_WORKS, SEWERS,
   DOCK, LIBRARY, CIRCUS, COLOSSEUM, COURTHOUSE, TEMPLE, LIGHTHOUSE, STABLE,
   CASTLE, ARMORY, FORGE, MARKET, MINT, GARDEN, UNIVERSITY, WORKSHOP, AQUEDUCT, HARBOR, OBSERVATORY,
   OPERA_HOUSE, BANK, MUSEUM, PUBLIC_SCHOOL, SEAPORT, WINDMILL, ZOO,
-  MILITARY_ACADEMY, ARSENAL, FACTORY, RAILWAY_STATION, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,
+  MILITARY_ACADEMY, ARSENAL, FACTORY, RAILWAY_STATION, CONTAINER_PORT, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,
   BROADCAST_TOWER, STADIUM, MILITARY_BASE, MEDICAL_LAB,
   RESEARCH_LAB, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, NUCLEAR_SILO, POLICE_STATION, SPACESHIP_FACTORY,
 ];

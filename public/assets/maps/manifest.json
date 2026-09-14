@@ -1,33 +1,39 @@
 {
   "maps": [
     {
+      "key": "map_world",
+      "label": "World",
+      "file": "assets/maps/world.json",
+      "order": 1
+    },
+    {
       "key": "map_astra_europa",
       "label": "Ancient Europa",
       "file": "assets/maps/astra-europa.json",
-      "order": 1
+      "order": 2
     },
     {
       "key": "map_america",
       "label": "America",
       "file": "assets/maps/america.json",
-      "order": 2
+      "order": 3
     },
     {
       "key": "map_middle_east",
       "label": "Middle East",
       "file": "assets/maps/middle-east.json",
-      "order": 3
+      "order": 4
+    },
+    {
+      "key": "map_eastern_europe",
+      "label": "Eastern Europe",
+      "file": "assets/maps/eastern-europe.json",
+      "order": 5
     },
     {
       "key": "map_scandinavia",
       "label": "Scandinavia",
       "file": "assets/maps/scandinavia.json",
-      "order": 5
-    },
-    {
-      "key": "map_world",
-      "label": "Word",
-      "file": "assets/maps/world.json",
       "order": 6
     },
     {
@@ -53,12 +59,6 @@
       "label": "Maritime Expansion",
       "file": "assets/maps/maritimeExpansion.json",
       "order": 10
-    },
-    {
-      "key": "map_eastern_europe",
-      "label": "Eastern Europe",
-      "file": "assets/maps/eastern-europe.json",
-      "order": 4
     }
   ]
 }

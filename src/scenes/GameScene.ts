@@ -12600,7 +12600,8 @@ export class GameScene extends Phaser.Scene {
         .map(buildingType => ({ kind: 'building' as const, buildingType }))),
     ], getHighestEra(nationManager.getAllNations().map(n => eraSystem.getNationEra(n.id))),
       cityManager.getAllCities().filter(city => getSettlementStage(cityManager.getBuildings(city.id), city) !== 'Village').map(city => city.id),
-      cityManager.getAllCities().filter(city => getSettlementStage(cityManager.getBuildings(city.id), city) === 'City').map(city => city.id));
+      cityManager.getAllCities().filter(city => ['City', 'Metropolis'].includes(getSettlementStage(cityManager.getBuildings(city.id), city))).map(city => city.id),
+      cityManager.getAllCities().filter(city => city.settlementStage === 'Metropolis').map(city => city.id));
     turnManager.start();
 
     function refreshMovePreview(): void {

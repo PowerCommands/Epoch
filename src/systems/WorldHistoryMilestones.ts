@@ -12,10 +12,10 @@ export class WorldHistoryMilestones {
   private seen = new Set<string>();
   private ready = false;
   constructor(private readonly history: HistoricalTimelineService) {}
-  initialize(saved: unknown, existing: readonly Producible[], worldEra: Era, existingCityIds: readonly string[] = [], existingIndustrialCityIds: readonly string[] = []): void {
+  initialize(saved: unknown, existing: readonly Producible[], worldEra: Era, existingCityIds: readonly string[] = [], existingIndustrialCityIds: readonly string[] = [], existingMetropolisIds: readonly string[] = []): void {
     this.seen = new Set(Array.isArray(saved) ? saved.filter((s): s is string => typeof s === 'string') : []);
     for (const event of this.history.getEvents()) {
-      if (event.metadata?.firstCity) this.seen.add(event.metadata.settlementStage === 'City' ? 'first:industrial-city' : 'first:city');
+      if (event.metadata?.firstCity) this.seen.add(event.metadata.settlementStage === 'Metropolis' ? 'first:metropolis' : event.metadata.settlementStage === 'City' ? 'first:industrial-city' : 'first:city');
       if (event.metadata?.worldHistoryKey) this.seen.add(event.metadata.worldHistoryKey);
     }
     // Existing scenario/legacy assets are not newly built; do not invent dates for them.
@@ -29,6 +29,8 @@ export class WorldHistoryMilestones {
     if (existingCityIds.length) this.seen.add('first:city');
     for (const id of existingIndustrialCityIds) this.seen.add(`city-evolved:${id}`);
     if (existingIndustrialCityIds.length) this.seen.add('first:industrial-city');
+    for (const id of existingMetropolisIds) this.seen.add(`city-metropolis:${id}`);
+    if (existingMetropolisIds.length) this.seen.add('first:metropolis');
     this.ready = true;
   }
   getState(): string[] { return [...this.seen].sort(); }
@@ -47,16 +49,17 @@ export class WorldHistoryMilestones {
   developedCity(city: City, buildings: CityBuildings, previousStage: SettlementStage): void {
     const next = getSettlementStage(buildings, city);
     if (!this.ready || next === previousStage || next === 'Village') return;
-    const stages = previousStage === 'Village' && next === 'City' ? ['Town', 'City'] as const : [next];
+    const order = ['Village', 'Town', 'City', 'Metropolis'] as const;
+    const stages = order.slice(order.indexOf(previousStage) + 1, order.indexOf(next) + 1).filter((stage): stage is Exclude<SettlementStage, 'Village'> => stage !== 'Village');
     for (const stage of stages) {
       // Retain the old keys for the renamed Town milestone in legacy saves.
-      const key = `${stage === 'Town' ? 'city-developed' : 'city-evolved'}:${city.id}`;
-      const firstKey = stage === 'Town' ? 'first:city' : 'first:industrial-city';
+      const key = `${stage === 'Town' ? 'city-developed' : stage === 'City' ? 'city-evolved' : 'city-metropolis'}:${city.id}`;
+      const firstKey = stage === 'Town' ? 'first:city' : stage === 'City' ? 'first:industrial-city' : 'first:metropolis';
       if (this.seen.has(key)) continue;
       const firstCity = !this.seen.has(firstKey);
       this.seen.add(key); this.seen.add(firstKey);
       this.history.record({ type: 'cityDeveloped', icon: '🏙',
-        text: firstCity ? `${city.name} becomes the world's first ${stage}.` : `${city.name} develops from a ${stage === 'Town' ? 'Village' : 'Town'} into a ${stage}.`,
+        text: firstCity ? `${city.name} becomes the world's first ${stage}.` : `${city.name} develops from a ${stage === 'Town' ? 'Village' : stage === 'City' ? 'Town' : 'City'} into a ${stage}.`,
         eventNationIds: [city.ownerId], newsImportance: firstCity ? 0 : 4,
         metadata: { cityId: city.id, cityName: city.name, firstCity, settlementStage: stage, worldHistoryKey: key } });
     }

@@ -1,22 +1,24 @@
 import Phaser from 'phaser';
+import { drawMetropolis, drawMetropolisActivity } from './MetropolisArtwork';
 import { drawCityWagons, drawCityFountain } from './CityStreetActivity';
 import { drawSteamLocomotive, STATION_TRACK_Y } from './StationTrain';
+import { drawCitySteamWorks, drawCitySteamExhaust, drawCitySmog } from './CityIndustry';
 import { isMapAnimationsEnabled } from '../PlayerSettings';
 import type { City, SettlementStage } from '../../entities/City';
 import type { TileMap } from '../TileMap';
 import { getUrbanSlots } from '../UrbanDevelopment';
 import { drawUrbanShore, drawWaterfrontSector, waterfrontPoint, lighthouseLight, type WaterfrontSector } from './UrbanWaterfront';
 
-import { cityRailCorridor, drawOrganicCity, CITY_STREETS, CITY_FOUNTAIN, cityContains as contains, type CityPoint as Point } from './OrganicCityArtwork';
+import { cityRailCorridor, drawOrganicCity, CITY_STREETS, CITY_FOUNTAIN, cityContains as contains, cityOccluded, type CityPoint as Point, type CityArtwork } from './OrganicCityArtwork';
 
 // Texture metadata survives scene restarts alongside Phaser's texture cache.
-const smokeByTexture = new WeakMap<Phaser.Textures.Texture, Point[]>();
+const artworkByTexture = new WeakMap<Phaser.Textures.Texture, CityArtwork>();
 
 /** A single baked streetscape shared by cities at this map scale, plus one scene
  * animation loop. No actors, timers, pathfinding, or per-house display objects. */
 export class UrbanCityVisual {
   private readonly reducedMotion = typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-reduced-motion: reduce)');
-  private readonly live = new Map<Phaser.GameObjects.Container, { ink: Phaser.GameObjects.Graphics; size: number; phase: number; land: Point[][]; smoke: Point[]; waterfront: WaterfrontSector[]; industrial: boolean; rail: ReturnType<typeof cityRailCorridor> }>();
+  private readonly live = new Map<Phaser.GameObjects.Container, CityArtwork & { ink: Phaser.GameObjects.Graphics; size: number; phase: number; land: Point[][]; waterfront: WaterfrontSector[]; industrial: boolean; metropolis: boolean; rail: ReturnType<typeof cityRailCorridor> }>();
   constructor(private readonly scene: Phaser.Scene, private readonly tileMap: TileMap) {
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.update, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -42,7 +44,7 @@ export class UrbanCityVisual {
       const landCenters = centers.filter((_,i)=>i===0 || !getUrbanSlots(city)[i-1].water);
       const polygons = landCenters.map(c => this.tileMap.getTileOutlinePoints(c.x, c.y)
         .map(p => ({ x: p.x - origin.x, y: p.y - origin.y })));
-      smokeByTexture.set(texture, drawOrganicCity(ctx, polygons, unit, stage === 'City'));
+      artworkByTexture.set(texture, stage === 'Metropolis' ? drawMetropolis(ctx, polygons, unit) : drawOrganicCity(ctx, polygons, unit, stage === 'City'));
       const waterfront = this.getWaterfront(city);
       drawUrbanShore(ctx, waterfront, polygons, unit);
       for (const sector of waterfront) drawWaterfrontSector(ctx, sector, unit);
@@ -69,33 +71,48 @@ export class UrbanCityVisual {
       .map(p=>({x:p.x-origin.x,y:p.y-origin.y})));
     const rect=this.tileMap.getTileRect(city.tileX,city.tileY);
     const key=`urban-${stage}-${rect.width}-${rect.height}-${city.urbanDevelopment?.waterMask ?? 0}`;
-    this.live.set(container, { ink, land, industrial: stage === 'City', rail:cityRailCorridor(land,rect.width), smoke:smokeByTexture.get(this.scene.textures.get(key)) ?? [], waterfront: this.getWaterfront(city), size: this.tileMap.getTileRect(city.tileX, city.tileY).width, phase });
+    const artwork=artworkByTexture.get(this.scene.textures.get(key));
+    this.live.set(container, { ink, land, industrial: stage === 'City', metropolis: stage === 'Metropolis', rail:cityRailCorridor(land,rect.width), smoke:artwork?.smoke ?? [], engines:artwork?.engines ?? [], occluders:artwork?.occluders ?? [], waterfront: this.getWaterfront(city), size: rect.width, phase });
     container.once(Phaser.GameObjects.Events.DESTROY, () => this.live.delete(container));
   }
 
   private update(time: number): void {
     const view = this.scene.cameras.main.worldView;
     const animate = isMapAnimationsEnabled() && this.scene.cameras.main.zoom >= .45 && !this.reducedMotion?.matches;
-    for (const [container, {ink,size,phase,land,smoke,waterfront,industrial,rail}] of this.live) {
+    for (const [container, {ink,size,phase,land,smoke,engines,occluders,waterfront,industrial,metropolis,rail}] of this.live) {
       if (!container.visible || container.x+size*2<view.left || container.x-size*2>view.right
         || container.y+size*2<view.top || container.y-size*2>view.bottom) continue;
       ink.clear();
+      if (metropolis) {
+        drawMetropolisActivity(ink,land,size,animate ? time+phase*50 : 0,phase);
+        continue;
+      }
+      // Machinery remains visible in its resting pose when motion is disabled.
+      for(const engine of engines) drawCitySteamWorks(ink,engine,size,animate?time+phase*50:0);
+      if(industrial) drawCitySmog(ink,smoke,size,animate?time:0);
       if (!animate) continue;
-      drawCityWagons(ink,size,time,phase,land);
+      drawCityWagons(ink,size,time,phase,land,industrial,occluders);
       // Walkers use the exact crooked polylines baked into the streetscape.
-      for(let i=0;i<14;i++) {
+      for(let i=0;i<(industrial?32:12);i++) {
         const path=CITY_STREETS[i%CITY_STREETS.length];
         const t=(time/38000+phase*.013+i*.173)%2;
         const position=(t>1?2-t:t)*(path.length-1);
         const index=Math.min(path.length-2,Math.floor(position)), f=position-index;
         const x=(path[index].x+(path[index+1].x-path[index].x)*f)*size;
         const y=(path[index].y+(path[index+1].y-path[index].y)*f)*size;
-        if(!land.some(p=>contains(p,{x,y})))continue;
-        ink.fillStyle(0x413c32,.45);ink.fillEllipse(x+1,y+1,1.8,1);
-        ink.fillStyle([0x644f40,0x9d6551,0x4f6866][i%3],.95);ink.fillRect(x,y-1.7,1.1,2);
-        ink.fillStyle(0xd5b68d,1);ink.fillCircle(x+.5,y-2,.55);
+        if(!land.some(p=>contains(p,{x,y})) || cityOccluded({x,y:y-size*.02},occluders))continue;
+        const stride=Math.sin(time/180+i)*size*.004;
+        ink.fillStyle(0x1c3030,.35);ink.fillEllipse(x+size*.007,y+size*.007,size*.024,size*.013);
+        ink.lineStyle(size*.004,0x263d40,1);
+        ink.lineBetween(x-size*.004,y-size*.008,x-size*.004+stride,y+size*.006);
+        ink.lineBetween(x+size*.004,y-size*.008,x+size*.004-stride,y+size*.006);
+        ink.fillStyle((industrial?[0x234554,0x7f362d,0x394339,0xa07240]:[0x285d6b,0xae3929,0xd0a140,0x477148])[i%4],1);
+        ink.fillEllipse(x,y-size*.020,size*.018,size*.027);
+        ink.fillStyle(0xe0b27f,1);ink.fillCircle(x,y-size*.037,size*.007);
+        ink.fillStyle(industrial?0x263c3d:0x5b3d2a,1);ink.fillEllipse(x,y-size*.042,size*.019,size*.007);
+        if(industrial&&i%3===0)ink.fillRect(x-size*.006,y-size*.052,size*.012,size*.010);
       }
-      if(!industrial || rail.y/size > .5) drawCityFountain(ink,size,time,CITY_FOUNTAIN);
+      if(!industrial) drawCityFountain(ink,size,time,CITY_FOUNTAIN);
       // Two workers per waterfront follow the same pier coordinates used by
       // the baked artwork. One batch, deterministic phases, no simulated actors.
       for (let i=0; i<waterfront.length; i++) {
@@ -119,13 +136,14 @@ export class UrbanCityVisual {
       if(industrial) {
         const width=rail.right-rail.left;
         drawSteamLocomotive(ink,(x,y)=>({x:rail.left+x*width,y:rail.y+.024*size+(y-STATION_TRACK_Y)*width}),width,time/1000,(phase%97)/97,1);
+        for(const engine of engines) drawCitySteamExhaust(ink,engine,size,time,phase);
       }
       // Slowly dissipating workshop plumes, drawn in the same batch.
-      for(let i=0;i<smoke.length;i++) for(let j=0;j<5;j++) {
-        const t=(time/7200+i*.31+j/5)%1;
-        ink.fillStyle(0xe1e3d3,Math.min(1,t*6)*(1-t)*.38);
-        ink.fillEllipse(smoke[i].x+(t*.055+Math.sin(t*4+i)*.012)*size,
-          smoke[i].y-size*t*.24,size*(.026+t*.05),size*(.023+t*.045));
+      for(let i=0;i<smoke.length;i++) for(let j=0;j<6;j++) {
+        const t=(time/(industrial?9200:7200)+i*.31+j/6)%1;
+        ink.fillStyle(industrial?(j%2?0x52605b:0x35434a):0xd9e5df,Math.min(1,t*9)*(1-t)*(industrial?.27:.35));
+        ink.fillEllipse(smoke[i].x+(t*(industrial?.18:.085)+Math.sin(t*4+i)*.012)*size,
+          smoke[i].y-size*t*(industrial?.32:.24),size*(.016+t*.062),size*(.019+t*.042));
       }
     }
   }

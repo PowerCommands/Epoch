@@ -263,6 +263,18 @@
           "size": 60391
         },
         {
+          "name": "container_port-broken.png",
+          "path": "/assets/sprites/buildings/container_port-broken.png",
+          "type": "PNG",
+          "size": 322012
+        },
+        {
+          "name": "container_port.png",
+          "path": "/assets/sprites/buildings/container_port.png",
+          "type": "PNG",
+          "size": 345545
+        },
+        {
           "name": "courthouse-broken.png",
           "path": "/assets/sprites/buildings/courthouse-broken.png",
           "type": "PNG",

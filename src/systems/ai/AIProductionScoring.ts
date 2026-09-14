@@ -280,7 +280,7 @@ function getScientificFocusMultiplier(candidate: AIProductionCandidate): number 
 }
 
 function isNavalInfrastructure(buildingId: string): boolean {
-  return /harbor|lighthouse|sea[_ -]?port/i.test(buildingId);
+  return /harbor|lighthouse|sea[_ -]?port|container[_ -]?port/i.test(buildingId);
 }
 
 /**

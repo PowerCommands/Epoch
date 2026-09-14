@@ -70,6 +70,14 @@
       "iconPath": "assets/sprites/buildings/air_base.png"
     },
     {
+      "id": "airport",
+      "name": "Airport",
+      "era": "modern",
+      "placement": "land",
+      "aircraftCapacity": 4,
+      "iconPath": "assets/sprites/buildings/air_base.png"
+    },
+    {
       "id": "monument",
       "name": "Monument",
       "era": "ancient",
@@ -343,6 +351,13 @@
       "era": "industrial",
       "placement": "land",
       "iconPath": "assets/sprites/buildings/railway_station.png"
+    },
+    {
+      "id": "container_port",
+      "name": "Container Port",
+      "era": "industrial",
+      "placement": "water",
+      "iconPath": "assets/sprites/buildings/container_port.png"
     },
     {
       "id": "coal_power_plant",

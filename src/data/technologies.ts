@@ -673,10 +673,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Combustion',
     era: 'industrial',
     cost: 4100,
-    description: 'Turns fuel engines into fast ships, armored vehicles, and efficient gas turbines. Unlocks Destroyers, Landships, and Gas Power Plants.',
+    description: 'Turns fuel engines into fast ships, armored vehicles, and efficient gas turbines. Unlocks Destroyers, Landships, Gas Power Plants, and Container Ports.',
     prerequisites: ['railroad'],
     leadsTo: ['combined_arms'],
-    unlocks: [{ kind: 'unit', id: 'destroyer' }, { kind: 'unit', id: 'landship' }, { kind: 'building', id: 'gas_power_plant' }],
+    unlocks: [{ kind: 'unit', id: 'destroyer' }, { kind: 'unit', id: 'landship' }, { kind: 'building', id: 'gas_power_plant' }, { kind: 'building', id: 'container_port' }],
   },
   {
     id: 'ballistics',
@@ -727,7 +727,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Detects aircraft and threats before they arrive. Unlocks Fighters, Bombers, and Paratroopers.',
     prerequisites: ['ballistics', 'electronics'],
     leadsTo: ['rocketry', 'nuclear_fission', 'computers'],
-    unlocks: [{ kind: 'building', id: 'air_base' }, { kind: 'unit', id: 'fighter' }, { kind: 'unit', id: 'bomber' }, { kind: 'unit', id: 'paratrooper' }, { kind: 'unit', id: 'partisans' }],
+    unlocks: [{ kind: 'building', id: 'airport' }, { kind: 'building', id: 'air_base' }, { kind: 'unit', id: 'fighter' }, { kind: 'unit', id: 'bomber' }, { kind: 'unit', id: 'paratrooper' }, { kind: 'unit', id: 'partisans' }],
     // TODO: unlocks Pentagon wonder.
   },
   {

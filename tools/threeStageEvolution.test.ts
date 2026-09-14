@@ -20,7 +20,7 @@ import { getSettlementProgress } from '../src/systems/SettlementProgress';
 import { getUrbanInfrastructureCandidates } from '../src/systems/ai/AIUrbanDevelopment';
 import { completeBuildingUpgrade } from '../src/systems/buildingUpgrades';
 
-function harness() {
+export function harness() {
   const h = setup();
   const nations = new NationManager();
   for (const id of ['human','enemy']) nations.addNation(new Nation({id,name:id,color:0,isHuman:id==='human'}));
@@ -62,8 +62,9 @@ test('human and AI evolve on the sixth ordinary City requirement in either order
       h.complete(id);
       assert.equal(h.city.settlementStage,i===5?'City':'Town');
       const progress=getSettlementProgress(h.city,h.buildings,()=>true);
-      assert.equal(progress.spatial,false);assert.equal(progress.completed,i+1);
-      assert.deepEqual(progress.slots.map(s=>s.buildingId),[...CITY_DEVELOPMENT_BUILDINGS]);
+      assert.equal(progress.spatial,false);assert.equal(progress.completed,i===5?0:i+1);
+      if(i<5)assert.deepEqual(progress.slots.map(s=>s.buildingId),[...CITY_DEVELOPMENT_BUILDINGS]);
+      else assert.equal(progress.to,'Metropolis');
       assert.equal(getUrbanSlots(h.city).length,6);
     }
     assert.deepEqual(h.city.ownedTileCoords,footprint);
@@ -118,7 +119,7 @@ test('strategic blast leaves permanent Town buildings active and damages ordinar
   for(const slot of getUrbanSlots(h.city))assert.equal(h.buildings.hasActive(slot.buildingId!),true);
 });
 
-function save(h:ReturnType<typeof harness>) {
+export function save(h:ReturnType<typeof harness>) {
   return JSON.parse(JSON.stringify(SaveLoadService.serialize({mapKey:'test',humanNationId:'human',activeNationIds:['human'],gameSpeedId:'standard',mapData:h.map,nationManager:h.nations,cityManager:h.manager,
     unitManager:{getAllUnits:()=>[]},productionSystem:h.production,policySystem:{getActivePolicyAssignments:()=>[]},
     diplomacyManager:{getAllStates:()=>[],getAllVassalRelationships:()=>[],getPendingPeaceProposals:()=>[],getPeaceTreatyCooldownTurns:()=>0,getMinPeaceNegotiationTurns:()=>0},
@@ -210,7 +211,7 @@ test('Seaport fulfills the single transport slot through ordinary coastal produc
   assert.equal(h.city.settlementStage,'City');assert.equal(h.buildings.has('railway_station'),false);
   h.complete('railway_station');
   progress=getSettlementProgress(h.city,h.buildings,()=>true);
-  assert.equal(progress.completed,6);assert.equal(progress.slots.length,6);
+  assert.equal(progress.completed,0);assert.equal(progress.slots.length,6);
   h.buildings.remove('railway_station');h.buildings.remove('seaport');
   const serialized=save(h),loaded=harness();
   (SaveLoadService as any).applyCitiesAndProduction(serialized.cities,loaded.manager,loaded.production,loaded.map,loaded.grid,'standard');

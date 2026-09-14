@@ -6,6 +6,7 @@ import {
   ARMORY,
   BARRACKS,
   COLOSSEUM,
+  CONTAINER_PORT,
   FACTORY,
   HARBOR,
   MILITARY_ACADEMY,
@@ -50,6 +51,7 @@ const NATION_ID = 'upgrade_test_nation';
 const CITY_ID = 'upgrade_test_city';
 const SINGLE_STEP_UPGRADE_PAIRS: ReadonlyArray<readonly [BuildingType, BuildingType]> = [
   [HARBOR, SEAPORT],
+  [SEAPORT, CONTAINER_PORT],
   [COLOSSEUM, STADIUM],
   [UNIVERSITY, PUBLIC_SCHOOL],
   [WORKSHOP, FACTORY],

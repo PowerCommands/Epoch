@@ -11,6 +11,7 @@ import type { CityManager } from './CityManager';
 import type { NationManager } from './NationManager';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
+import { hasActiveBuildingOrUpgrade } from './buildingUpgrades';
 
 export interface ManufacturedResourceQuantity {
   readonly resourceId: string;
@@ -97,7 +98,7 @@ export class CorporationSystem {
     if (!corporation) return blockers;
 
     const cityBuildings = this.cityManager.getBuildings(city.id);
-    if (!cityBuildings.hasActive(corporation.productionBuildingId)) {
+    if (!hasActiveBuildingOrUpgrade(cityBuildings, corporation.productionBuildingId)) {
       blockers.push(`city missing production building: ${corporation.productionBuildingId}`);
     }
 
@@ -194,7 +195,7 @@ export class CorporationSystem {
     corporation: CorporationDefinition,
   ): number {
     const producingCityCount = this.cityManager.getCitiesByOwner(nationId).filter((city) =>
-      this.cityManager.getBuildings(city.id).hasActive(corporation.productionBuildingId),
+      hasActiveBuildingOrUpgrade(this.cityManager.getBuildings(city.id), corporation.productionBuildingId),
     ).length;
     return producingCityCount * corporation.resourcePerBuilding;
   }
@@ -240,7 +241,7 @@ export class CorporationSystem {
 
   private hasNationBuilding(nationId: string, buildingId: string): boolean {
     return this.cityManager.getCitiesByOwner(nationId).some((city) =>
-      this.cityManager.getBuildings(city.id).hasActive(buildingId),
+      hasActiveBuildingOrUpgrade(this.cityManager.getBuildings(city.id), buildingId),
     );
   }
 

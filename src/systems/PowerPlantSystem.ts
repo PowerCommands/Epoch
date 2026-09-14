@@ -1,4 +1,4 @@
-import { getSettlementStage, TOWN_POPULATION_CAPACITY_BONUS } from './UrbanDevelopment';
+import { getSettlementStage, METROPOLIS_POPULATION_CAPACITY_BONUS, TOWN_POPULATION_CAPACITY_BONUS } from './UrbanDevelopment';
 import { nuclearPlantAtRisk, nuclearPlantRoll, NUCLEAR_PLANT_MELTDOWN_CHANCE } from '../data/nuclearPlants';
 import { TileType, type Tile } from '../types/map';
 import { getBuildingById } from '../data/buildings';
@@ -296,7 +296,7 @@ export class PowerPlantSystem {
     }, 0);
     const city = this.cityManager.getCity(cityId);
     const developmentBonus = city && getSettlementStage(this.cityManager.getBuildings(cityId), city) !== 'Village'
-      ? TOWN_POPULATION_CAPACITY_BONUS : 0;
+      ? TOWN_POPULATION_CAPACITY_BONUS + (getSettlementStage(this.cityManager.getBuildings(cityId), city) === 'Metropolis' ? METROPOLIS_POPULATION_CAPACITY_BONUS : 0) : 0;
     return BASE_CITY_POPULATION_CAPACITY + infrastructureBonus + plantBonus + this.getCityRenewableCapacity(cityId) + developmentBonus;
   }
 

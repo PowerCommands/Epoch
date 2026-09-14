@@ -13,6 +13,11 @@ export const URBAN_SLOTS = [
   { position: 'left', buildingId: 'sewers', dq: -1, dr: 0 },
 ] as const;
 export const TOWN_POPULATION_CAPACITY_BONUS = 5;
+export const METROPOLIS_POPULATION_CAPACITY_BONUS = 10;
+export const METROPOLIS_DEVELOPMENT_REQUIREMENTS: readonly (readonly string[])[] = [
+  ['nuclear_plant', 'offshore_wind_farm'], ['airport', 'container_port'],
+  ['stock_exchange'], ['broadcast_tower'], ['stadium'], ['medical_lab'],
+];
 export type { SettlementStage } from '../entities/City';
 import type { SettlementStage } from '../entities/City';
 export const CITY_DEVELOPMENT_REQUIREMENTS: readonly (readonly string[])[] = [
@@ -46,7 +51,7 @@ export function getUrbanSlotAt(city: Pick<City, 'tileX' | 'tileY'> & Partial<Pic
 
 /** Physical completion counts even when damaged. Existing upgrades retain development. */
 export function getSettlementStage(buildings: CityBuildings, city?: City): SettlementStage {
-  if (city?.settlementStage === 'City') return 'City';
+  if (city?.settlementStage === 'Metropolis') return 'Metropolis';
   if (city && city.settlementStage === 'Village' && !canDevelopIntoTown(city)) return 'Village';
   const completed = new Set<string>();
   for (const entry of buildings.getAllEntries()) {
@@ -56,8 +61,9 @@ export function getSettlementStage(buildings: CityBuildings, city?: City): Settl
       id = getBuildingById(id)?.upgradesFrom;
     }
   }
-  const town = city?.settlementStage === 'Town' || (city ? getUrbanSlots(city) : URBAN_SLOTS).every(s => s.buildingId !== null && completed.has(s.buildingId));
-  return town ? CITY_DEVELOPMENT_REQUIREMENTS.every(options => options.some(id => completed.has(id))) ? 'City' : 'Town' : 'Village';
+  const town = city?.settlementStage === 'City' || city?.settlementStage === 'Town' || (city ? getUrbanSlots(city) : URBAN_SLOTS).every(s => s.buildingId !== null && completed.has(s.buildingId));
+  const developedCity = city?.settlementStage === 'City' || (town && CITY_DEVELOPMENT_REQUIREMENTS.every(options => options.some(id => completed.has(id))));
+  return developedCity ? METROPOLIS_DEVELOPMENT_REQUIREMENTS.every(options => options.some(id => completed.has(id))) ? 'Metropolis' : 'City' : town ? 'Town' : 'Village';
 }
 
 /** Called on completion/restoration, before any destructive state mutation. */

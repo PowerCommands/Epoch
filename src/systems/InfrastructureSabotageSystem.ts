@@ -206,8 +206,12 @@ export class InfrastructureSabotageSystem {
     if (unit.unitType.canBuildImprovements === true) {
       const buildingId = tile.buildingId!;
       const city = this.findCityOwningTile(tile)!;
-      // Repeatable structures live on individual tiles, not in CityBuildings.
-      if (!getBuildingById(buildingId)?.repeatable) {
+      // Repeatable effects live on tiles; retain their city requirement only
+      // while at least one physical instance remains in this territory.
+      if (!getBuildingById(buildingId)?.repeatable || !city.ownedTileCoords.some(coord => {
+        const other = this.mapData.tiles[coord.y]?.[coord.x];
+        return other !== tile && other?.buildingId === buildingId;
+      })) {
         this.cityManager.getBuildings(city.id).remove(buildingId);
       }
       tile.buildingId = undefined;
