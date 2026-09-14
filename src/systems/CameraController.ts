@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { PlanetaryRenderer } from './rendering/PlanetaryRenderer';
-import { planetaryHalfExtents, unprojectPlanetary } from './rendering/PlanetaryProjection';
+import { GLOBE_LATITUDE_LIMIT, GLOBE_LONGITUDE_SPAN, globeDestination, globeOrientation, type PlanetarySurface, wrapLongitude, planetaryHalfExtents, unprojectPlanetary } from './rendering/PlanetaryProjection';
 import type { WorldInputGate } from './input/WorldInputGate';
 import { isPointerEventConsumed } from '../utils/phaserScreenSpaceUi';
 
@@ -20,6 +20,17 @@ export class CameraController {
   private readonly cam: Phaser.Cameras.Scene2D.Camera;
   private readonly fallbackMinZoom: number;
   private readonly planetary?: PlanetaryRenderer;
+  private readonly globeHint: HTMLDivElement;
+  private globeReturnZoom = 1;
+  private globeZoomDestination: { x: number; y: number } | null = null;
+  private globeExiting = false;
+  private globeDragStart = { longitude: 0, latitude: 0 };
+  get isGlobeNavigationActive(): boolean { return !!this.planetary?.navigation; }
+  private keyboardCaptured(): boolean {
+    const active = document.activeElement;
+    return this.worldInputGate.isWorldInteractionBlocked() || (active instanceof HTMLElement &&
+      (active.isContentEditable || !!active.closest('input, textarea, select, button, [role="dialog"], dialog')));
+  }
   private targetZoom: number | null = null;
   private zoomAnchor = { x: 0, y: 0 };
   private get minZoom(): number { return this.planetary?.range.min ?? this.fallbackMinZoom; }
@@ -53,11 +64,19 @@ export class CameraController {
     worldHeight: number,
     private readonly worldInputGate: WorldInputGate,
     minZoom = DEFAULT_ZOOM_MIN,
+    surface?: PlanetarySurface,
   ) {
     this.cam = scene.cameras.main;
+    this.globeHint = document.createElement('div');
+    this.globeHint.className = 'globe-navigation-hint';
+    this.globeHint.textContent = 'Globe navigation · Drag / WASD / arrows · Scroll to approach · G to return';
+    this.globeHint.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);max-width:60vw;padding:8px 14px;border:1px solid #52758b;border-radius:6px;background:#101d2ee8;color:#e5eff6;font:13px sans-serif;text-align:center;pointer-events:none;z-index:20';
+    this.globeHint.hidden = true;
+    document.body.appendChild(this.globeHint);
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.globeHint.remove());
     this.fallbackMinZoom = minZoom;
     if (scene.game.renderer.type === Phaser.WEBGL) {
-      this.planetary = new PlanetaryRenderer(this.cam, scene.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer, worldWidth, worldHeight);
+      this.planetary = new PlanetaryRenderer(this.cam, scene.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer, worldWidth, worldHeight, surface);
       scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.planetary?.destroy());
     }
     this.cam.setBounds(0, 0, worldWidth, worldHeight);
@@ -75,20 +94,40 @@ export class CameraController {
       d:     kb.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
 
+    const onGlobeKey = (event: KeyboardEvent): void => {
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || this.keyboardCaptured()) return;
+      if (!this.planetary) return;
+      if (this.isGlobeNavigationActive) {
+        this.globeExiting = true;
+        this.targetZoom = Math.max(this.globeReturnZoom, this.planetary.range.start);
+        this.clampGlobeDestination();
+      } else {
+        this.enterGlobeNavigation();
+        this.targetZoom = this.minZoom;
+      }
+      this.zoomAnchor = { x: this.cam.x + this.cam.width / 2, y: this.cam.y + this.cam.height / 2 };
+    };
+    kb.on('keydown-G', onGlobeKey);
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => kb.off('keydown-G', onGlobeKey));
     this.registerPointerEvents(scene);
     this.registerWheelEvent(scene);
   }
 
   /** Anropas varje frame från GameScene.update(). */
   update(delta: number): void {
-    if (this.cam.zoom < this.minZoom) this.setZoom(this.minZoom);
+    if (this.cam.zoom < this.minZoom) {
+      if (this.isGlobeNavigationActive) this.cam.zoom = this.minZoom;
+      else this.setZoom(this.minZoom);
+    }
     if (this.targetZoom !== null) {
       const target = Phaser.Math.Clamp(this.targetZoom, this.minZoom, ZOOM_MAX);
       const next = Phaser.Math.Linear(this.cam.zoom, target, 1 - Math.exp(-delta / 90));
       this.zoomAround(Math.abs(next - target) < 0.0001 ? target : next, this.zoomAnchor.x, this.zoomAnchor.y);
       if (this.cam.zoom === target) this.targetZoom = null;
     }
+    this.globeHint.hidden = !this.isGlobeNavigationActive || this.worldInputGate.isWorldInteractionBlocked();
     this.handleKeyboardPan(delta);
+    this.syncGlobeCamera();
     this.planetary?.update();
   }
 
@@ -101,6 +140,9 @@ export class CameraController {
   /** Change zoom while preserving the current camera centre. */
   setZoom(zoom: number): void {
     this.targetZoom = null;
+    this.globeZoomDestination = null;
+    if (this.planetary) this.planetary.navigation = null;
+    this.globeExiting = false;
     const centerX = this.cam.midPoint.x;
     const centerY = this.cam.midPoint.y;
     this.cam.zoom = Phaser.Math.Clamp(zoom, this.minZoom, ZOOM_MAX);
@@ -124,8 +166,10 @@ export class CameraController {
   getViewportWorldBounds(): { x: number; y: number; width: number; height: number } {
     const half = this.planetary ? planetaryHalfExtents(this.planetary.view)
       : { x: this.cam.width / (2 * this.cam.zoom), y: this.cam.height / (2 * this.cam.zoom) };
-    return { x: this.cam.scrollX + this.cam.width / 2 - half.x,
-      y: this.cam.scrollY + this.cam.height / 2 - half.y, width: half.x * 2, height: half.y * 2 };
+    const center = this.planetary?.navigation ? globeDestination(this.planetary.view)
+      : { x: this.cam.scrollX + this.cam.width / 2, y: this.cam.scrollY + this.cam.height / 2 };
+    return { x: center.x - half.x,
+      y: center.y - half.y, width: half.x * 2, height: half.y * 2 };
   }
 
   setPointerPanEnabled(enabled: boolean): void {
@@ -146,7 +190,7 @@ export class CameraController {
   // ─── Privata metoder ───────────────────────────────────────────────────────
 
   private handleKeyboardPan(delta: number): void {
-    if (this.worldInputGate.isWorldInteractionBlocked()) return;
+    if (this.keyboardCaptured()) return;
     // Skala hastigheten omvänt mot zoom så att rörelsen känns
     // konsekvent oavsett hur långt inzoomad spelaren är.
     const speed = (PAN_SPEED / this.cam.zoom) * (delta / 1000);
@@ -156,6 +200,12 @@ export class CameraController {
     const moveUp    = this.keys.up.isDown    || this.keys.w.isDown;
     const moveDown  = this.keys.down.isDown  || this.keys.s.isDown;
 
+    if (this.planetary?.navigation) {
+      if (moveLeft || moveRight || moveUp || moveDown) this.rotateGlobe((Number(moveRight) - Number(moveLeft)) * delta / 700,
+        (Number(moveDown) - Number(moveUp)) * delta / 1000);
+      return;
+    }
+    if (moveLeft || moveRight || moveUp || moveDown) this.globeZoomDestination = null;
     if (moveLeft)  this.cam.scrollX -= speed;
     if (moveRight) this.cam.scrollX += speed;
     if (moveUp)    this.cam.scrollY -= speed;
@@ -171,7 +221,11 @@ export class CameraController {
       // prevents world systems from processing pointer sequences claimed by HUD controls.
       if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
       if (isPointerEventConsumed(pointer)) return;
-      this.targetZoom = null;
+      if (!this.isGlobeNavigationActive) {
+        this.targetZoom = null;
+        this.globeZoomDestination = null;
+      }
+      if (this.planetary?.navigation) this.globeDragStart = { ...this.planetary.navigation };
       this.pointerIsDown = true;
       this.didDrag = false;
       this.dragStartX = pointer.x;
@@ -185,6 +239,16 @@ export class CameraController {
       if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
       if (!this.pointerIsDown) return;
 
+      if (this.planetary?.navigation) {
+        const dx = pointer.x - this.dragStartX, dy = pointer.y - this.dragStartY;
+        if (Math.hypot(dx, dy) >= CameraController.DRAG_THRESHOLD) this.didDrag = true;
+        if (this.didDrag) {
+          const radius = Math.min(this.cam.width, this.cam.height) * 0.43;
+          this.planetary.navigation = { ...this.globeDragStart };
+          this.rotateGlobe(-dx / radius, -dy / radius);
+        }
+        return;
+      }
       const start = this.sourcePoint(this.dragStartX, this.dragStartY);
       const current = this.sourcePoint(pointer.x, pointer.y);
       if (!start || !current) return;
@@ -219,6 +283,20 @@ export class CameraController {
   }
 
   private zoomAround(zoom: number, x: number, y: number): void {
+    if (this.isGlobeNavigationActive) {
+      this.cam.zoom = zoom;
+      this.syncGlobeCamera();
+      return;
+    }
+    if (this.globeZoomDestination && zoom > this.cam.zoom) {
+      const destination = this.globeZoomDestination;
+      this.cam.zoom = zoom;
+      this.cam.centerOn(destination.x, destination.y);
+      if (Math.hypot(this.cam.scrollX + this.cam.width / 2 - destination.x,
+        this.cam.scrollY + this.cam.height / 2 - destination.y) < 0.01) this.globeZoomDestination = null;
+      return;
+    }
+    this.globeZoomDestination = null;
     const before = this.sourcePoint(x, y);
     const oldZoom = this.cam.zoom;
     this.cam.zoom = zoom;
@@ -230,6 +308,47 @@ export class CameraController {
     }
   }
 
+  private enterGlobeNavigation(): void {
+    if (!this.planetary) return;
+    const v = this.planetary.view;
+    this.globeReturnZoom = this.cam.zoom;
+    this.globeExiting = false;
+    const orientation = globeOrientation(this.cam.scrollX + this.cam.width / 2, this.cam.scrollY + this.cam.height / 2, v);
+    this.planetary.navigation = { ...orientation,
+      latitude: Phaser.Math.Clamp(orientation.latitude, -GLOBE_LATITUDE_LIMIT, GLOBE_LATITUDE_LIMIT) };
+  }
+
+  private rotateGlobe(longitude: number, latitude: number): void {
+    const nav = this.planetary?.navigation;
+    if (!nav) return;
+    nav.longitude = wrapLongitude(nav.longitude + longitude);
+    nav.latitude = Phaser.Math.Clamp(nav.latitude + latitude, -GLOBE_LATITUDE_LIMIT, GLOBE_LATITUDE_LIMIT);
+    this.syncGlobeCamera();
+  }
+
+  private clampGlobeDestination(): void {
+    const nav = this.planetary?.navigation;
+    if (nav) nav.longitude = Phaser.Math.Clamp(nav.longitude, -GLOBE_LONGITUDE_SPAN / 2, GLOBE_LONGITUDE_SPAN / 2);
+  }
+
+  private syncGlobeCamera(): void {
+    if (!this.planetary?.navigation) return;
+    const v = this.planetary.view;
+    const destination = globeDestination(v);
+    // At full altitude capture the whole finite map. The shader's source offset
+    // keeps the viewed location fixed as the flat camera converges on it.
+    this.cam.centerOn(Phaser.Math.Linear(destination.x, v.mapWidth / 2, v.strength),
+      Phaser.Math.Linear(destination.y, v.mapHeight / 2, v.strength));
+    if (v.strength === 0 && this.globeExiting) {
+      // Ordinary camera bounds may temporarily centre a short map at the
+      // transition threshold. Retain the destination until closer zoom can
+      // frame it, so subsequent wheel ticks do not inherit that clamped centre.
+      this.globeZoomDestination = destination;
+      this.planetary.navigation = null;
+      this.globeExiting = false;
+    }
+  }
+
   private registerWheelEvent(scene: Phaser.Scene): void {
     scene.input.on(
       Phaser.Input.Events.POINTER_WHEEL,
@@ -237,7 +356,15 @@ export class CameraController {
         if (this.worldInputGate.isWheelBlocked(pointer.x, pointer.y)) return;
         if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
         if (isPointerEventConsumed(pointer)) return;
+        if (dy === 0) return;
         const oldZoom = this.targetZoom ?? this.cam.zoom;
+        if (this.planetary && !this.isGlobeNavigationActive && dy > 0 && oldZoom <= this.planetary.range.start + ZOOM_STEP) {
+          this.enterGlobeNavigation();
+        }
+        if (this.isGlobeNavigationActive) {
+          this.globeExiting = dy < 0;
+          if (dy < 0) this.clampGlobeDestination();
+        }
         const farZoom = this.planetary && oldZoom <= this.planetary.range.start + ZOOM_STEP;
         this.targetZoom = Phaser.Math.Clamp(
           farZoom ? oldZoom * Math.exp(-Math.sign(dy) * 0.16) : oldZoom - Math.sign(dy) * ZOOM_STEP,

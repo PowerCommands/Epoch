@@ -27,6 +27,7 @@ import { TileMap } from '../systems/TileMap';
 import { WorldAmbientRenderer } from '../systems/WorldAmbientRenderer';
 import { ScenarioLoader } from '../systems/ScenarioLoader';
 import { CameraController } from '../systems/CameraController';
+import { hexPlanetarySurface } from '../systems/rendering/PlanetaryProjection';
 import { SelectionManager } from '../systems/SelectionManager';
 import { NationManager } from '../systems/NationManager';
 import { CityManager } from '../systems/CityManager';
@@ -779,7 +780,8 @@ export class GameScene extends Phaser.Scene {
     const { width: worldWidth, height: worldHeight } = tileMap.getWorldBounds();
     const overviewZoom = this.getMapCoverZoom(worldWidth, worldHeight);
     const worldInputGate = new WorldInputGate();
-    this.cameraController = new CameraController(this, worldWidth, worldHeight, worldInputGate, overviewZoom);
+    this.cameraController = new CameraController(this, worldWidth, worldHeight, worldInputGate, overviewZoom,
+      hexPlanetarySurface(mapData.width, mapData.height, mapData.tileSize));
     // 8. Rendera städer ovanför enheter (depth 19.6)
     const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager, (nationId) => eraSystem.getNationEra(nationId));
 
@@ -5144,11 +5146,13 @@ export class GameScene extends Phaser.Scene {
       unitActionToolbox.tryActivate(mode);
     };
     const onKeyMove = () => activateActionIfHumanTurn('move');
-    const onKeyAttack = () => activateActionIfHumanTurn('attack');
+    const onKeyAttack = () => {
+      if (!this.cameraController.isGlobeNavigationActive) activateActionIfHumanTurn('attack');
+    };
     const onKeyRanged = () => activateActionIfHumanTurn('ranged');
     // Plain S sleeps; Ctrl+S is reserved for the save dialog.
     const onKeySleep = (event: KeyboardEvent) => {
-      if (event.ctrlKey) return;
+      if (event.ctrlKey || this.cameraController.isGlobeNavigationActive) return;
       activateActionIfHumanTurn('sleep');
     };
     const bindGameplayHotkeys = (): void => {

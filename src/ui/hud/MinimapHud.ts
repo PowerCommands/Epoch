@@ -257,6 +257,7 @@ export class MinimapHud {
     const viewH = camera.height;
 
     if (!this._dirty
+      && !this.cameraController.isGlobeNavigationActive
       && scrollX === this._lastScrollX
       && scrollY === this._lastScrollY
       && zoom === this._lastZoom
