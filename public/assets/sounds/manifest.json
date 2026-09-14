@@ -120,6 +120,18 @@
       "/assets/sounds/start/theme-01.mp3",
       "/assets/sounds/start/theme-02.mp3"
     ],
+    "nation_nigeria": [
+      "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-01.mp3",
+      "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-02.mp3"
+    ],
+    "nation_kenya": [
+      "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-01.mp3",
+      "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-02.mp3"
+    ],
+    "nation_south_africa": [
+      "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-01.mp3",
+      "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-02.mp3"
+    ],
     "nation_soviet_union": [
       "/assets/sounds/nation_russia/ivan-iv-theme-01.mp3",
       "/assets/sounds/nation_russia/ivan-iv-theme-02.mp3"

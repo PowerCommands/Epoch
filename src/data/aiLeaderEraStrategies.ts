@@ -770,6 +770,13 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
 };
 
 export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] = [
+  {"leaderId": "leader_bola_tinubu", "strategiesByEra": {"ancient": "coastalTechEconomy"}},
+  {"leaderId": "leader_goodluck_jonathan", "strategiesByEra": {"ancient": "tallGrowth"}},
+  {"leaderId": "leader_william_ruto", "strategiesByEra": {"ancient": "tallGrowth"}},
+  {"leaderId": "leader_uhuru_kenyatta", "strategiesByEra": {"ancient": "defensiveBuilder"}},
+  {"leaderId": "leader_nelson_mandela", "strategiesByEra": {"ancient": "culturalDominance"}},
+  {"leaderId": "leader_thabo_mbeki", "strategiesByEra": {"ancient": "coastalTechEconomy"}},
+
   {"leaderId": "leader_frederick_barbarossa", "strategiesByEra": {"ancient": "militaryPreparation"}},
   {"leaderId": "leader_mindaugas", "strategiesByEra": {"ancient": "tallGrowth"}},
   {"leaderId": "leader_alexander_nevsky", "strategiesByEra": {"ancient": "defensiveBuilder"}},

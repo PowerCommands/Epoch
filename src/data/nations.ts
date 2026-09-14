@@ -14,6 +14,10 @@ export interface NationDefinition {
 }
 
 export const NATION_DEFINITIONS: readonly NationDefinition[] = [
+  {"id": "nation_nigeria", "name": "Nigeria", "color": "#008751", "secondaryColor": "#ffffff", "currencyName": "Nigerian Naira", "currencySymbol": "₦", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/nigeria.png"},
+  {"id": "nation_kenya", "name": "Kenya", "color": "#bb0000", "secondaryColor": "#006600", "currencyName": "Kenyan Shilling", "currencySymbol": "KSh", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/kenya.png"},
+  {"id": "nation_south_africa", "name": "South Africa", "color": "#007749", "secondaryColor": "#ffb81c", "currencyName": "South African Rand", "currencySymbol": "R", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/south-africa.png"},
+
   { id: 'nation_england', name: 'England', color: '#dd203f', secondaryColor: '#3714c3', currencyName: 'Pound Sterling', currencySymbol: '£' },
   { id: 'nation_france', name: 'France', color: '#1e0af1', secondaryColor: '#f4efe2', currencyName: 'Franc', currencySymbol: '₣' },
   { id: 'nation_hre', name: 'Holy Roman Empire', color: '#e8c84a', secondaryColor: '#4a4030', currencyName: 'Imperial Thaler', currencySymbol: 'Th' },

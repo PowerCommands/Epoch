@@ -1,3 +1,4 @@
+import { MODERN_AFRICAN_WAR_DECLARATIONS } from './modernAfricanWarDeclarations';
 import { ROSTER_ALTERNATIVE_WAR_DECLARATIONS } from './rosterAlternativeWarDeclarations';
 import { getLeaderConfiguration } from './leaderConfiguration';
 import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDeclaration';
@@ -9,6 +10,7 @@ import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDe
  */
 export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhrases>> = {
   ...ROSTER_ALTERNATIVE_WAR_DECLARATIONS,
+  ...MODERN_AFRICAN_WAR_DECLARATIONS,
   leader_boris_johnson: {
   "conquest": [
     "This strategic position offers an advantage we cannot leave to chance. Our forces will take it; our purpose is security, not an endless collection of flags.",

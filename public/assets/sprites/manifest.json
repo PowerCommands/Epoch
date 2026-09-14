@@ -1355,10 +1355,28 @@
       "label": "Flags",
       "assets": [
         {
+          "name": "kenya.png",
+          "path": "/assets/sprites/flags/kenya.png",
+          "type": "PNG",
+          "size": 4284
+        },
+        {
+          "name": "nigeria.png",
+          "path": "/assets/sprites/flags/nigeria.png",
+          "type": "PNG",
+          "size": 526
+        },
+        {
           "name": "north-korea.png",
           "path": "/assets/sprites/flags/north-korea.png",
           "type": "PNG",
           "size": 3176
+        },
+        {
+          "name": "south-africa.png",
+          "path": "/assets/sprites/flags/south-africa.png",
+          "type": "PNG",
+          "size": 3625
         },
         {
           "name": "south-korea.png",
@@ -1589,6 +1607,18 @@
           "size": 357058
         },
         {
+          "name": "bola-tinubu-room.webp",
+          "path": "/assets/sprites/leaders/bola-tinubu-room.webp",
+          "type": "WEBP",
+          "size": 360820
+        },
+        {
+          "name": "bola-tinubu.png",
+          "path": "/assets/sprites/leaders/bola-tinubu.png",
+          "type": "PNG",
+          "size": 374911
+        },
+        {
           "name": "boris-johnson-room.webp",
           "path": "/assets/sprites/leaders/boris-johnson-room.webp",
           "type": "WEBP",
@@ -1791,6 +1821,18 @@
           "path": "/assets/sprites/leaders/giorgia-meloni.png",
           "type": "PNG",
           "size": 355217
+        },
+        {
+          "name": "goodluck-jonathan-room.webp",
+          "path": "/assets/sprites/leaders/goodluck-jonathan-room.webp",
+          "type": "WEBP",
+          "size": 306020
+        },
+        {
+          "name": "goodluck-jonathan.png",
+          "path": "/assets/sprites/leaders/goodluck-jonathan.png",
+          "type": "PNG",
+          "size": 312918
         },
         {
           "name": "gustaf-vasa-room.webp",
@@ -2141,6 +2183,18 @@
           "size": 380804
         },
         {
+          "name": "nelson-mandela-room.webp",
+          "path": "/assets/sprites/leaders/nelson-mandela-room.webp",
+          "type": "WEBP",
+          "size": 351496
+        },
+        {
+          "name": "nelson-mandela.png",
+          "path": "/assets/sprites/leaders/nelson-mandela.png",
+          "type": "PNG",
+          "size": 379483
+        },
+        {
           "name": "oda-nobunaga-room.webp",
           "path": "/assets/sprites/leaders/oda-nobunaga-room.webp",
           "type": "WEBP",
@@ -2333,6 +2387,18 @@
           "size": 370611
         },
         {
+          "name": "thabo-mbeki-room.webp",
+          "path": "/assets/sprites/leaders/thabo-mbeki-room.webp",
+          "type": "WEBP",
+          "size": 303672
+        },
+        {
+          "name": "thabo-mbeki.png",
+          "path": "/assets/sprites/leaders/thabo-mbeki.png",
+          "type": "PNG",
+          "size": 318757
+        },
+        {
           "name": "thaksin-shinawatra-room.webp",
           "path": "/assets/sprites/leaders/thaksin-shinawatra-room.webp",
           "type": "WEBP",
@@ -2379,6 +2445,18 @@
           "path": "/assets/sprites/leaders/tsai-ing-wen.png",
           "type": "PNG",
           "size": 370135
+        },
+        {
+          "name": "uhuru-kenyatta-room.webp",
+          "path": "/assets/sprites/leaders/uhuru-kenyatta-room.webp",
+          "type": "WEBP",
+          "size": 312142
+        },
+        {
+          "name": "uhuru-kenyatta.png",
+          "path": "/assets/sprites/leaders/uhuru-kenyatta.png",
+          "type": "PNG",
+          "size": 328389
         },
         {
           "name": "urho-kekkonen-room.webp",
@@ -2451,6 +2529,18 @@
           "path": "/assets/sprites/leaders/vytautas-the-great.png",
           "type": "PNG",
           "size": 250171
+        },
+        {
+          "name": "william-ruto-room.webp",
+          "path": "/assets/sprites/leaders/william-ruto-room.webp",
+          "type": "WEBP",
+          "size": 326290
+        },
+        {
+          "name": "william-ruto.png",
+          "path": "/assets/sprites/leaders/william-ruto.png",
+          "type": "PNG",
+          "size": 307365
         },
         {
           "name": "winston-churchill-room.webp",

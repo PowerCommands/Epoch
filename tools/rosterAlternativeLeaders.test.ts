@@ -1,3 +1,4 @@
+import { MODERN_AFRICAN_LEADERS } from '../src/data/modernAfricanLeaders';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
@@ -28,18 +29,21 @@ const json = (path: string) => JSON.parse(fs.readFileSync(path, 'utf8'));
 
 test('every playable nation has alternatives, unchanged defaults, and no unnecessary additions', () => {
   assert.equal(ROSTER_ALTERNATIVE_LEADERS.length, 27);
-  assert.equal(NATION_DEFINITIONS.length, audit.length);
+  assert.equal(NATION_DEFINITIONS.length, audit.length + MODERN_AFRICAN_LEADERS.filter(l => l.isDefault).length);
   assert.equal(new Set(ALL_LEADERS.map(l => l.id)).size, ALL_LEADERS.length);
   for (const leader of ALL_LEADERS) assert.ok(getNationDefinitionById(leader.nationId), leader.id);
   for (const nation of NATION_DEFINITIONS) {
-    const before = audit.find(row => row.nationId === nation.id)!;
+    // Keep the historical roster audit intact; later additions have their own content tests.
+    const before = audit.find(row => row.nationId === nation.id);
     const leaders = getLeadersByNationId(nation.id);
     assert.ok(leaders.length >= 2, nation.name);
-    assert.equal(leaders.length, before.finalCount, nation.name);
+    if (before) assert.equal(leaders.length, before.finalCount, nation.name);
     assert.equal(leaders.filter(l => l.isDefault).length, 1, nation.name);
-    assert.equal(getDefaultLeaderByNationId(nation.id)?.id, before.defaultLeaderId);
-    assert.deepEqual(leaders.map(l => l.id), [...before.before, ...before.added]);
-    assert.equal(before.added.length, before.before.length === 1 ? 1 : 0);
+    if (before) {
+      assert.equal(getDefaultLeaderByNationId(nation.id)?.id, before.defaultLeaderId);
+      assert.deepEqual(leaders.map(l => l.id), [...before.before, ...before.added]);
+      assert.equal(before.added.length, before.before.length === 1 ? 1 : 0);
+    }
     for (const current of leaders) {
       // Alternatives form a set for either starting government, not a fixed replacement pair.
       setActiveLeaderSelections({ [nation.id]: current.id });

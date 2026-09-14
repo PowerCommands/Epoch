@@ -1,3 +1,4 @@
+import { MODERN_AFRICAN_LEADERS } from './modernAfricanLeaders';
 import { ROSTER_ALTERNATIVE_LEADERS } from './rosterAlternativeLeaders';
 import { CENTRAL_EASTERN_EUROPEAN_LEADERS } from './centralEasternEuropeanLeaders';
 import { ASIAN_LEADERS } from './asianLeaders';
@@ -1021,6 +1022,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
   ...MIDDLE_EASTERN_LEADERS,
   ...ASIAN_LEADERS,
   ...CENTRAL_EASTERN_EUROPEAN_LEADERS,
+  ...MODERN_AFRICAN_LEADERS,
   WINSTON_CHURCHILL,
   CHARLES_DE_GAULLE,
   ADOLF_HITLER,

@@ -561,6 +561,35 @@
       ]
     },
     {
+      "nationId": "nation_kenya",
+      "nationName": "Kenya",
+      "color": "#bb0000",
+      "secondaryColor": "#006600",
+      "flagImage": "/assets/sprites/flags/kenya.png",
+      "currencyName": "Kenyan Shilling",
+      "currencySymbol": "KSh",
+      "leaderId": "leader_william_ruto",
+      "leaderName": "William Ruto",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/william-ruto.png",
+      "leaders": [
+        {
+          "leaderId": "leader_william_ruto",
+          "leaderName": "William Ruto",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/william-ruto.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_uhuru_kenyatta",
+          "leaderName": "Uhuru Kenyatta",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/uhuru-kenyatta.png",
+          "isDefault": false
+        }
+      ]
+    },
+    {
       "nationId": "nation_lithuania",
       "nationName": "Lithuania",
       "color": "#f4870b",
@@ -696,6 +725,35 @@
           "leaderName": "Mohammed V",
           "leaderTitle": "King",
           "leaderImage": "/assets/sprites/leaders/mohammed-v.png",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "nationId": "nation_nigeria",
+      "nationName": "Nigeria",
+      "color": "#008751",
+      "secondaryColor": "#ffffff",
+      "flagImage": "/assets/sprites/flags/nigeria.png",
+      "currencyName": "Nigerian Naira",
+      "currencySymbol": "₦",
+      "leaderId": "leader_bola_tinubu",
+      "leaderName": "Bola Tinubu",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/bola-tinubu.png",
+      "leaders": [
+        {
+          "leaderId": "leader_bola_tinubu",
+          "leaderName": "Bola Tinubu",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/bola-tinubu.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_goodluck_jonathan",
+          "leaderName": "Goodluck Jonathan",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/goodluck-jonathan.png",
           "isDefault": false
         }
       ]
@@ -893,6 +951,35 @@
           "leaderName": "Faisal bin Abdulaziz Al Saud",
           "leaderTitle": "King",
           "leaderImage": "/assets/sprites/leaders/faisal-bin-abdulaziz.png",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "nationId": "nation_south_africa",
+      "nationName": "South Africa",
+      "color": "#007749",
+      "secondaryColor": "#ffb81c",
+      "flagImage": "/assets/sprites/flags/south-africa.png",
+      "currencyName": "South African Rand",
+      "currencySymbol": "R",
+      "leaderId": "leader_nelson_mandela",
+      "leaderName": "Nelson Mandela",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/nelson-mandela.png",
+      "leaders": [
+        {
+          "leaderId": "leader_nelson_mandela",
+          "leaderName": "Nelson Mandela",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/nelson-mandela.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_thabo_mbeki",
+          "leaderName": "Thabo Mbeki",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/thabo-mbeki.png",
           "isDefault": false
         }
       ]

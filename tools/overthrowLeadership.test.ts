@@ -409,3 +409,33 @@ test('the regime-change newspaper article names the nation and both leaders gene
   assert.match(body, /Angela Merkel/);
   assert.match(body, /Germany/);
 });
+
+for (const [nationId, defaultId, alternativeId] of [
+  ['nation_nigeria', 'leader_bola_tinubu', 'leader_goodluck_jonathan'],
+  ['nation_kenya', 'leader_william_ruto', 'leader_uhuru_kenyatta'],
+  ['nation_south_africa', 'leader_nelson_mandela', 'leader_thabo_mbeki'],
+]) {
+  test(`${nationId}: capitulation installs either leader and preserves nation identity`, () => {
+    try {
+      resetLeaders();
+      assert.equal(getLeaderByNationId(nationId)?.id, defaultId);
+      for (const [current, replacement] of [[defaultId, alternativeId], [alternativeId, defaultId]]) {
+        assert.equal(setActiveLeaderForNation(nationId, current), true);
+        assert.deepEqual(getAlternativeLeadersByNationId(nationId).map(l => l.id), [replacement]);
+        const h = harness({ target: nationId, demander: 'atk', cities: [{ id: 'c1', ownerId: nationId, originNationId: nationId }] });
+        assert.equal(h.system.canOverthrowLeadership(nationId), true);
+        const result = h.system.applyCapitulation('atk', nationId, 0, false, false, { overthrowLeaderId: replacement });
+        assert.equal(result.accepted, true);
+        assert.ok(result.leadershipOverthrow);
+        assert.equal(getLeaderByNationId(nationId)?.id, replacement);
+        assert.equal(getLeaderByNationId(nationId)?.nationId, nationId);
+        assert.deepEqual(getLeaderByNationId(nationId)?.aiPersonality, getLeaderById(replacement)?.aiPersonality);
+        assert.equal(h.vassalHosts.has(nationId), false);
+      }
+      setScenarioLeaderOverrides([{ id: 'african_scenario_nation', replacementNationId: nationId }]);
+      assert.equal(setActiveLeaderForNation('african_scenario_nation', alternativeId), true);
+      assert.equal(getLeaderByNationId('african_scenario_nation')?.id, alternativeId);
+      assert.deepEqual(getAlternativeLeadersByNationId('african_scenario_nation').map(l => l.id), [defaultId]);
+    } finally { resetLeaders(); }
+  });
+}

@@ -3,6 +3,9 @@
 (() => {
   // src/data/nations.ts
   var NATION_DEFINITIONS = [
+    { "id": "nation_nigeria", "name": "Nigeria", "color": "#008751", "secondaryColor": "#ffffff", "currencyName": "Nigerian Naira", "currencySymbol": "\u20A6", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/nigeria.png" },
+    { "id": "nation_kenya", "name": "Kenya", "color": "#bb0000", "secondaryColor": "#006600", "currencyName": "Kenyan Shilling", "currencySymbol": "KSh", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/kenya.png" },
+    { "id": "nation_south_africa", "name": "South Africa", "color": "#007749", "secondaryColor": "#ffb81c", "currencyName": "South African Rand", "currencySymbol": "R", "audioPlaylistId": "nation_mali-empire", "flagImage": "/assets/sprites/flags/south-africa.png" },
     { id: "nation_england", name: "England", color: "#dd203f", secondaryColor: "#3714c3", currencyName: "Pound Sterling", currencySymbol: "\xA3" },
     { id: "nation_france", name: "France", color: "#1e0af1", secondaryColor: "#f4efe2", currencyName: "Franc", currencySymbol: "\u20A3" },
     { id: "nation_hre", name: "Holy Roman Empire", color: "#e8c84a", secondaryColor: "#4a4030", currencyName: "Imperial Thaler", currencySymbol: "Th" },
@@ -274,7 +277,7 @@
     node({ id: "craftsmanship", name: "Craftsmanship", era: "ancient", cost: 48, description: "Skilled hands organize labor, tools, and local defense. Craft traditions help settlements turn raw materials into lasting civic strength.", prerequisites: ["code_of_laws"], unlocks: [{ type: "policySlot", value: "military" }] }),
     node({ id: "foreign_trade", name: "Foreign Trade", era: "ancient", cost: 52, description: "Merchants and envoys begin carrying goods beyond familiar borders. Trade customs make distant neighbors part of city life.", prerequisites: ["code_of_laws"], unlocks: [{ type: "diplomacy", value: "trade_delegations" }, { type: "policySlot", value: "diplomatic" }] }),
     node({ id: "early_empire", name: "Early Empire", era: "ancient", cost: 50, description: "Small settlements learn to think as a realm. Borders, tribute, and local chiefs become the first shape of expansion.", prerequisites: ["craftsmanship"], unlocks: [{ type: "government", value: "tribal_council" }] }),
-    node({ id: "state_workforce", name: "State Workforce", era: "ancient", cost: 55, description: "Public labor becomes an instrument of government. Organized work crews raise monuments, roads, and shared civic projects.", prerequisites: ["craftsmanship"], unlocks: [{ type: "building", value: "sewers" }] }),
+    node({ id: "state_workforce", name: "State Workforce", era: "ancient", cost: 55, description: "Public labor becomes an instrument of government. Organized work crews raise monuments, roads, and shared civic projects, and open the Public Works policy.", prerequisites: ["craftsmanship"], unlocks: [] }),
     node({ id: "mysticism", name: "Mysticism", era: "ancient", cost: 60, description: "Ritual, omen, and sacred authority bind people through wonder. Flexible traditions make room for leaders who act beyond ordinary law.", prerequisites: ["foreign_trade"], unlocks: [{ type: "policySlot", value: "wildcard" }] }),
     node({ id: "military_tradition", name: "Military Tradition", era: "classical", cost: 90, description: "War stories become doctrine, ceremony, and inherited command. Armies fight with shared memory as much as weapons.", prerequisites: ["early_empire"], unlocks: [{ type: "unit", value: "horseman" }] }),
     node({ id: "political_philosophy", name: "Political Philosophy", era: "classical", cost: 110, description: "Debate turns rule into an idea that can be compared and chosen. Citizens and rulers begin asking what government is for.", prerequisites: ["early_empire", "state_workforce"], unlocks: [{ type: "government", value: "classical_republic" }, { type: "government", value: "autocracy" }, { type: "policySlot", value: "wildcard" }, { type: "policySlot", value: "ideology" }] }),
@@ -338,6 +341,288 @@
     }
     return { id: "balancedGrowth", from: void 0, source: "Default \xB7 Balanced Growth" };
   }
+
+  // src/data/modernAfricanLeaders.ts
+  var MODERN_AFRICAN_LEADERS = [
+    {
+      "id": "leader_bola_tinubu",
+      "isDefault": true,
+      "name": "Bola Tinubu",
+      "nationId": "nation_nigeria",
+      "title": "President",
+      "image": "/assets/sprites/leaders/bola-tinubu.png",
+      "description": "Former governor of Lagos State (1999\u20132007), inaugurated as Nigerian president in 2023. His administration has pursued economic reforms and investment in infrastructure and energy.",
+      "ideologyId": "liberalism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "defensiveModern",
+      "covertPersonalityId": "merchant",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "mercantilism",
+        "civil_engineering",
+        "globalization"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "long_jump",
+        "additionalFavourite": "hundred_metres"
+      },
+      "aiPersonality": {
+        "aggressionBias": -8,
+        "expansionBias": 2,
+        "economyBias": 36,
+        "cultureBias": 10,
+        "diplomacyBias": 20,
+        "warTolerance": 48,
+        "peacePreference": 70,
+        "minimumUnitsLostBeforePeace": 3,
+        "casualtyToleranceRatio": 0.32,
+        "resourceExploitationInterest": 4
+      },
+      "diplomacyFlavor": {
+        "greeting": "Nigeria welcomes partners ready to turn commerce and investment into shared prosperity.",
+        "friendly": "Let us develop our oil and natural gas resources through agreements that reward both partners.",
+        "neutral": "Show us the investment, the terms and the benefit to our people.",
+        "hostile": "Pressure that disrupts our trade will make cooperation harder.",
+        "warDeclaration": "Nigeria will use force to secure the interests that negotiation has failed to protect.",
+        "victory": "Let us reopen commerce and put recovery at the centre of the settlement.",
+        "defeat": "We must reach practical terms and return our attention to livelihoods."
+      }
+    },
+    {
+      "id": "leader_goodluck_jonathan",
+      "isDefault": false,
+      "name": "Goodluck Jonathan",
+      "nationId": "nation_nigeria",
+      "title": "President",
+      "image": "/assets/sprites/leaders/goodluck-jonathan.png",
+      "description": "President of Nigeria from 2010 to 2015. He conceded the 2015 election and subsequently participated in international election observation and regional mediation.",
+      "ideologyId": "globalism",
+      "aiNationalAgendaId": "balanced",
+      "aiMilitaryDoctrineId": "culturalDefense",
+      "covertPersonalityId": "honorable",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "civil_service_civics",
+        "democracy",
+        "diplomatic_service",
+        "foreign_trade"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "wrestling",
+        "additionalFavourite": "boxing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -24,
+        "expansionBias": -12,
+        "economyBias": 20,
+        "cultureBias": 20,
+        "diplomacyBias": 34,
+        "warTolerance": 30,
+        "peacePreference": 88,
+        "minimumUnitsLostBeforePeace": 2,
+        "casualtyToleranceRatio": 0.22,
+        "resourceExploitationInterest": 2
+      },
+      "diplomacyFlavor": {
+        "greeting": "Nigeria welcomes dialogue founded on mutual respect and dependable institutions.",
+        "friendly": "Cooperation lasts when nations honour their commitments to one another.",
+        "neutral": "Let our institutions work through the details and find common ground.",
+        "hostile": "There is still time for mediation. Do not let disagreement become a war.",
+        "warDeclaration": "We enter this conflict reluctantly, to defend Nigeria and restore a secure peace.",
+        "victory": "Let this settlement strengthen peace and the institutions that sustain it.",
+        "defeat": "An agreement that ends the suffering deserves a serious hearing."
+      }
+    },
+    {
+      "id": "leader_william_ruto",
+      "isDefault": true,
+      "name": "William Ruto",
+      "nationId": "nation_kenya",
+      "title": "President",
+      "image": "/assets/sprites/leaders/william-ruto.png",
+      "description": "Inaugurated as Kenyan president in 2022 after serving as deputy president from 2013 to 2022. His economic programme emphasizes agriculture, housing and small enterprises.",
+      "ideologyId": "liberalism",
+      "aiNationalAgendaId": "growth",
+      "aiMilitaryDoctrineId": "economicMinimalArmy",
+      "covertPersonalityId": "merchant",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "civil_engineering",
+        "guilds",
+        "diplomatic_service"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "marathon",
+        "additionalFavourite": "hundred_metres"
+      },
+      "aiPersonality": {
+        "aggressionBias": -18,
+        "expansionBias": -4,
+        "economyBias": 30,
+        "cultureBias": 12,
+        "diplomacyBias": 26,
+        "warTolerance": 36,
+        "peacePreference": 80,
+        "minimumUnitsLostBeforePeace": 2,
+        "casualtyToleranceRatio": 0.28,
+        "resourceExploitationInterest": 3
+      },
+      "diplomacyFlavor": {
+        "greeting": "Kenya welcomes partners in farming, enterprise and regional prosperity.",
+        "friendly": "Better roads, stronger farms and open markets can lift both our peoples.",
+        "neutral": "Let us judge this proposal by the opportunities it creates.",
+        "hostile": "Disruption of regional commerce serves neither of us. Return to negotiations.",
+        "warDeclaration": "Kenya will defend its people and the foundations of their prosperity.",
+        "victory": "Let us restore trade and give our people room to build better lives.",
+        "defeat": "We should secure peace and resume the work of development."
+      }
+    },
+    {
+      "id": "leader_uhuru_kenyatta",
+      "isDefault": false,
+      "name": "Uhuru Kenyatta",
+      "nationId": "nation_kenya",
+      "title": "President",
+      "image": "/assets/sprites/leaders/uhuru-kenyatta.png",
+      "description": "President of Kenya from 2013 to 2022. His presidency included major transport infrastructure projects, regional diplomacy and security cooperation.",
+      "ideologyId": "conservatism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "defensiveModern",
+      "covertPersonalityId": "pragmatist",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "state_workforce",
+        "civil_engineering",
+        "diplomatic_service",
+        "defensive_tactics"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "marathon",
+        "additionalFavourite": "boxing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -10,
+        "expansionBias": 2,
+        "economyBias": 28,
+        "cultureBias": 14,
+        "diplomacyBias": 24,
+        "warTolerance": 52,
+        "peacePreference": 72,
+        "minimumUnitsLostBeforePeace": 4,
+        "casualtyToleranceRatio": 0.38,
+        "resourceExploitationInterest": 3
+      },
+      "diplomacyFlavor": {
+        "greeting": "Kenya seeks dependable partners for development and regional stability.",
+        "friendly": "Our infrastructure will achieve more when it connects prosperous neighbours.",
+        "neutral": "A sound agreement needs financing, delivery and credible security.",
+        "hostile": "Kenya will maintain the strength needed to safeguard its independence.",
+        "warDeclaration": "Our forces will act to protect Kenya and restore regional security.",
+        "victory": "The settlement must secure stability so that development can continue.",
+        "defeat": "Let us agree on workable terms and preserve the means to rebuild."
+      }
+    },
+    {
+      "id": "leader_nelson_mandela",
+      "isDefault": true,
+      "name": "Nelson Mandela",
+      "nationId": "nation_south_africa",
+      "title": "President",
+      "image": "/assets/sprites/leaders/nelson-mandela.png",
+      "description": "Anti-apartheid leader and president of South Africa from 1994 to 1999 after its first national election with universal adult suffrage. He promoted reconciliation and a constitutional democracy.",
+      "ideologyId": "progressivism",
+      "aiNationalAgendaId": "culture",
+      "aiMilitaryDoctrineId": "culturalDefense",
+      "covertPersonalityId": "honorable",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "humanism",
+        "democracy",
+        "diplomatic_service",
+        "games_recreation",
+        "suffrage"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "marathon",
+        "additionalFavourite": "boxing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -40,
+        "expansionBias": -30,
+        "economyBias": 14,
+        "cultureBias": 38,
+        "diplomacyBias": 40,
+        "warTolerance": 22,
+        "peacePreference": 96,
+        "minimumUnitsLostBeforePeace": 1,
+        "casualtyToleranceRatio": 0.18,
+        "resourceExploitationInterest": 1
+      },
+      "diplomacyFlavor": {
+        "greeting": "South Africa greets you as an equal. Let us begin with respect and the possibility of friendship.",
+        "friendly": "Reconciliation grows through patient cooperation. Our peoples deserve that effort.",
+        "neutral": "Every nation deserves a voice. Let us seek a solution that respects us both.",
+        "hostile": "Even now, dialogue remains possible. Let us step back from unnecessary suffering.",
+        "warDeclaration": "We have sought a peaceful resolution. South Africa will defend its sovereignty, while keeping the door open to peace.",
+        "victory": "Victory must become reconciliation. Let us build a peace that respects the dignity of both peoples.",
+        "defeat": "We must end the suffering through a just settlement and begin the work of reconciliation."
+      }
+    },
+    {
+      "id": "leader_thabo_mbeki",
+      "isDefault": false,
+      "name": "Thabo Mbeki",
+      "nationId": "nation_south_africa",
+      "title": "President",
+      "image": "/assets/sprites/leaders/thabo-mbeki.png",
+      "description": "President of South Africa from 1999 to 2008. His administration emphasized economic policy and African diplomacy, including regional cooperation and the development of continental institutions.",
+      "ideologyId": "globalism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "defensiveModern",
+      "covertPersonalityId": "merchant",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "civil_service_civics",
+        "civil_engineering",
+        "diplomatic_service",
+        "globalization"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "swimming",
+        "additionalFavourite": "hundred_metres"
+      },
+      "aiPersonality": {
+        "aggressionBias": -22,
+        "expansionBias": -8,
+        "economyBias": 34,
+        "cultureBias": 20,
+        "diplomacyBias": 32,
+        "warTolerance": 40,
+        "peacePreference": 84,
+        "minimumUnitsLostBeforePeace": 3,
+        "casualtyToleranceRatio": 0.3,
+        "resourceExploitationInterest": 3
+      },
+      "diplomacyFlavor": {
+        "greeting": "South Africa welcomes practical cooperation for development across our region.",
+        "friendly": "Trade and capable institutions can turn our shared ambitions into lasting progress.",
+        "neutral": "Let us examine the economic consequences and our wider regional responsibilities.",
+        "hostile": "Your actions undermine regional cooperation. We need a credible change of course.",
+        "warDeclaration": "South Africa will act to protect its security and the conditions for regional stability.",
+        "victory": "Let this settlement restore stability, trade and the work of development.",
+        "defeat": "We must negotiate a sustainable peace and preserve the foundations of recovery."
+      }
+    }
+  ];
 
   // src/data/rosterAlternativeLeaders.ts
   var ROSTER_ALTERNATIVE_LEADERS = [
@@ -4318,6 +4603,7 @@
     ...MIDDLE_EASTERN_LEADERS,
     ...ASIAN_LEADERS,
     ...CENTRAL_EASTERN_EUROPEAN_LEADERS,
+    ...MODERN_AFRICAN_LEADERS,
     WINSTON_CHURCHILL,
     CHARLES_DE_GAULLE,
     ADOLF_HITLER,
@@ -5456,6 +5742,12 @@
     SEA_WOLF_STRATEGY
   ];
   var LEADER_ERA_STRATEGY_PROFILES = [
+    { "leaderId": "leader_bola_tinubu", "strategiesByEra": { "ancient": "coastalTechEconomy" } },
+    { "leaderId": "leader_goodluck_jonathan", "strategiesByEra": { "ancient": "tallGrowth" } },
+    { "leaderId": "leader_william_ruto", "strategiesByEra": { "ancient": "tallGrowth" } },
+    { "leaderId": "leader_uhuru_kenyatta", "strategiesByEra": { "ancient": "defensiveBuilder" } },
+    { "leaderId": "leader_nelson_mandela", "strategiesByEra": { "ancient": "culturalDominance" } },
+    { "leaderId": "leader_thabo_mbeki", "strategiesByEra": { "ancient": "coastalTechEconomy" } },
     { "leaderId": "leader_frederick_barbarossa", "strategiesByEra": { "ancient": "militaryPreparation" } },
     { "leaderId": "leader_mindaugas", "strategiesByEra": { "ancient": "tallGrowth" } },
     { "leaderId": "leader_alexander_nevsky", "strategiesByEra": { "ancient": "defensiveBuilder" } },
@@ -5603,6 +5895,142 @@
   var ALL_GAMES_SPORTS = GAMES_OF_NATIONS_SPORT_DEFINITIONS.map((sport) => sport.name);
   var BY_ID2 = new Map(GAMES_OF_NATIONS_SPORT_DEFINITIONS.map((sport) => [sport.id, sport]));
   var BY_NAME = new Map(GAMES_OF_NATIONS_SPORT_DEFINITIONS.map((sport) => [sport.name, sport]));
+
+  // src/data/modernAfricanWarDeclarations.ts
+  var MODERN_AFRICAN_WAR_DECLARATIONS = {
+    "leader_bola_tinubu": {
+      "conquest": [
+        "Nigeria will secure this corridor to protect the trade on which our prosperity depends.",
+        "We have judged control of these resources necessary to our economic security. Our forces will act."
+      ],
+      "hostility": [
+        "Your interference with our commerce has exhausted the room for negotiation.",
+        "Repeated hostile acts have made a practical agreement impossible. Nigeria will respond with force."
+      ],
+      "threat": [
+        "We will not leave our people and vital infrastructure exposed to your forces.",
+        "Your military preparations threaten our security. Nigeria will act to remove that danger."
+      ],
+      "ideological": [
+        "Nigeria will defend its right to choose its own economic and political course.",
+        "You seek to impose your choices on our country. We will resist that attempt by force."
+      ],
+      "ambition": [
+        "We have judged that securing this position will strengthen Nigeria. Our forces will advance.",
+        "Nigeria is committing its forces to establish a stronger regional position."
+      ]
+    },
+    "leader_goodluck_jonathan": {
+      "conquest": [
+        "We have authorized an advance to secure this position. A negotiated settlement remains our objective.",
+        "Our forces will take this corridor; civilian protection and an early settlement must guide the campaign."
+      ],
+      "hostility": [
+        "Our efforts at mediation have failed to end your hostile actions. Nigeria will defend itself.",
+        "Your repeated attacks on cooperation leave us facing conflict, despite our efforts for peace."
+      ],
+      "threat": [
+        "Nigeria will protect its people from this military threat and continue to seek mediation.",
+        "We cannot leave our communities exposed to your forces. We act in their defence."
+      ],
+      "ideological": [
+        "Our people must be free to determine their future through their own institutions. We will defend that right.",
+        "Nigeria rejects imposed government. We will resist your attempt to dictate our future."
+      ],
+      "ambition": [
+        "We have chosen to commit forces to this regional objective, with a duty to seek an early peace.",
+        "Nigeria will pursue this strategic position by force. We remain accountable for the costs of that decision."
+      ]
+    },
+    "leader_william_ruto": {
+      "conquest": [
+        "Kenya will secure this route on which our communities and regional trade depend.",
+        "We are committing our forces to take this position and secure our economic lifelines."
+      ],
+      "hostility": [
+        "Your hostile actions are destroying opportunities for our people. Kenya will respond.",
+        "We offered practical cooperation. Your continued hostility has brought us to conflict."
+      ],
+      "threat": [
+        "Kenya will defend its farms, towns and transport links against this threat.",
+        "Our people cannot build their future under military intimidation. We will act in their defence."
+      ],
+      "ideological": [
+        "Kenya will defend the freedom to choose its own path of development.",
+        "Your attempt to impose your rule threatens our independence. We will resist."
+      ],
+      "ambition": [
+        "Kenya has decided to secure this regional position by force.",
+        "We are committing our forces to this strategic objective and the influence it brings."
+      ]
+    },
+    "leader_uhuru_kenyatta": {
+      "conquest": [
+        "Kenya will take this position to secure the regional routes essential to our stability.",
+        "Our forces will establish control of this corridor and protect the infrastructure behind it."
+      ],
+      "hostility": [
+        "We have sought dependable relations; your repeated hostile actions have ended that possibility.",
+        "Kenya will answer your sustained interference with military force."
+      ],
+      "threat": [
+        "Our security commitments require action against your military preparations.",
+        "Kenya maintains armed forces for moments such as this. We will defend our independence."
+      ],
+      "ideological": [
+        "You will not dictate how Kenya governs itself. We are prepared to defend that principle.",
+        "Our national institutions will not be subjected to your demands by force. We will resist."
+      ],
+      "ambition": [
+        "We will commit our forces to strengthen Kenya\u2019s strategic position in the region.",
+        "Securing this objective will give Kenya a more credible regional position. Our forces will advance."
+      ]
+    },
+    "leader_nelson_mandela": {
+      "conquest": [
+        "We have authorized an advance to secure this position. It must end in a just peace that respects both peoples.",
+        "Our forces will take this corridor. That decision carries a duty to protect civilians and seek reconciliation."
+      ],
+      "hostility": [
+        "We have sought dialogue, but your continued hostility has brought us to war. The path back to peace remains open.",
+        "South Africa will resist these hostile acts. We must still work toward a future in which we can live as neighbours."
+      ],
+      "threat": [
+        "We will defend our people and our sovereignty against this threat, while continuing to seek peace.",
+        "Your military actions endanger our communities. We must protect them without abandoning the possibility of reconciliation."
+      ],
+      "ideological": [
+        "No nation has the right to impose inequality on another. South Africa will defend its freedom.",
+        "Our people will determine their own future as equals among nations. We will resist your attempt to deny that right."
+      ],
+      "ambition": [
+        "We have chosen to pursue this strategic objective by force. We must accept responsibility and seek a just end to the conflict.",
+        "South Africa is committing forces to this position. Our duty to human dignity does not end when fighting begins."
+      ]
+    },
+    "leader_thabo_mbeki": {
+      "conquest": [
+        "South Africa will secure this corridor to protect the foundations of regional stability.",
+        "We have decided that control of this position is necessary to our strategic interests."
+      ],
+      "hostility": [
+        "Your repeated hostile actions have undermined the basis for regional cooperation. We will respond.",
+        "Diplomatic engagement has failed to halt your interference. South Africa will now use force."
+      ],
+      "threat": [
+        "The region cannot develop beneath this military threat. South Africa will act to protect its security.",
+        "We will defend our people and the institutions on which their future depends."
+      ],
+      "ideological": [
+        "Africa\u2019s nations must determine their own development. We will resist your attempt to impose a different order.",
+        "South Africa will defend its right to an independent political and economic course."
+      ],
+      "ambition": [
+        "We are committing forces to secure a stronger strategic position for South Africa.",
+        "We have judged this regional objective important enough to warrant military action."
+      ]
+    }
+  };
 
   // src/data/rosterAlternativeWarDeclarations.ts
   var ROSTER_ALTERNATIVE_WAR_DECLARATIONS = {
@@ -6205,6 +6633,7 @@
   // src/data/leaderWarDeclarations.ts
   var LEADER_WAR_DECLARATIONS = {
     ...ROSTER_ALTERNATIVE_WAR_DECLARATIONS,
+    ...MODERN_AFRICAN_WAR_DECLARATIONS,
     leader_boris_johnson: {
       "conquest": [
         "This strategic position offers an advantage we cannot leave to chance. Our forces will take it; our purpose is security, not an endless collection of flags.",
