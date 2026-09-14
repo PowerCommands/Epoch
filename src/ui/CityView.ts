@@ -1210,41 +1210,18 @@ export class CityView {
     confirm?: ProductionConfirm,
   ): void {
     const tooltipLines = lines.filter((line): line is string => Boolean(line));
-    const show = (x: number, y: number, pinned: boolean): void => {
-      this.showProductionTooltip(tooltipLines, button, pinned ? confirm : undefined);
-      if (pinned) {
-        this.tooltipPinned = true;
-        this.tooltipEl.classList.add('city-view-tooltip-pinned');
-      }
-      button.setAttribute('aria-describedby', this.tooltipEl.id);
-      this.positionTooltip(x, y);
-    };
-    button.addEventListener('mouseenter', (event) => {
-      if (this.tooltipPinned) return;
-      show(event.clientX, event.clientY, false);
-    });
-    button.addEventListener('mousemove', (event) => {
-      if (!this.tooltipPinned) this.positionTooltip(event.clientX, event.clientY);
-    });
-    button.addEventListener('focus', () => {
-      if (this.tooltipPinned) return;
-      const rect = button.getBoundingClientRect();
-      show(rect.right, rect.top, false);
-    });
-    const hide = (): void => {
-      if (this.tooltipPinned) return;
-      button.removeAttribute('aria-describedby');
-      this.hideTooltip();
-    };
-    button.addEventListener('mouseleave', hide);
-    button.addEventListener('blur', hide);
-    button.addEventListener('keydown', (event) => { if (event.key === 'Escape') hide(); });
-    // Clicking an item pins its preview open and surfaces the "Add to queue"
-    // action instead of starting production immediately.
+    // The preview only ever appears on click — no hover popup, since that made
+    // it hard to aim at the item you actually wanted. A click pins the preview
+    // open and surfaces its "Add to queue" action.
     button.addEventListener('click', () => {
+      this.showProductionTooltip(tooltipLines, button, confirm);
+      this.tooltipPinned = true;
+      this.tooltipEl.classList.add('city-view-tooltip-pinned');
+      button.setAttribute('aria-describedby', this.tooltipEl.id);
       const rect = button.getBoundingClientRect();
-      show(rect.right, rect.top, true);
+      this.positionTooltip(rect.right, rect.top);
     });
+    button.addEventListener('keydown', (event) => { if (event.key === 'Escape') this.hideTooltip(); });
   }
 
   private showProductionTooltip(
