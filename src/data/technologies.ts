@@ -154,10 +154,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Masonry',
     era: 'ancient',
     cost: 75,
-    description: 'Teaches durable stone construction for cities and monuments. Unlocks Walls and the Pyramids wonder.',
+    description: 'Teaches durable stone construction for cities and monuments. Unlocks Walls, Sewers, and the Pyramids wonder.',
     prerequisites: ['mining'],
     leadsTo: ['construction'],
-    unlocks: [{ kind: 'building', id: 'walls' }, { kind: 'wonder', id: 'pyramids' }],
+    unlocks: [{ kind: 'building', id: 'walls' }, { kind: 'building', id: 'sewers' }, { kind: 'wonder', id: 'pyramids' }],
     // TODO: unlocks Mausoleum of Halicarnassus wonder, Quarry improvement, marsh removal.
   },
   {
