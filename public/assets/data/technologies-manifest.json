@@ -72,7 +72,7 @@
     },
     {
       "id": "drama_and_poetry",
-      "name": "Drama and Poetry",
+      "name": "Literacy",
       "era": "classical"
     },
     {
@@ -102,12 +102,12 @@
     },
     {
       "id": "theology",
-      "name": "Theology",
+      "name": "Scholasticism",
       "era": "medieval"
     },
     {
       "id": "civil_service",
-      "name": "Civil Service",
+      "name": "Administration",
       "era": "medieval"
     },
     {
@@ -132,7 +132,7 @@
     },
     {
       "id": "guilds",
-      "name": "Guilds",
+      "name": "Crafting",
       "era": "medieval"
     },
     {
@@ -352,7 +352,7 @@
     },
     {
       "id": "globalization",
-      "name": "Globalization",
+      "name": "Global Networks",
       "era": "modern"
     },
     {

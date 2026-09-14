@@ -1,3 +1,5 @@
+import type { SettlementProgress } from '../systems/SettlementProgress';
+import { renderSettlementProgress } from './SettlementProgressView';
 import { ALL_UNIT_TYPES, getUnitTypeById } from '../data/units';
 import type { City } from '../entities/City';
 import { getFoodToGrow } from '../systems/CityEconomy';
@@ -27,7 +29,7 @@ type CorporationRequestCallback = (corporationId: string) => void;
 type ProjectRequestCallback = (projectId: string) => void;
 type QueueRemoveRequestCallback = (index: number) => void;
 type QueueBuyRequestCallback = (index: number) => void;
-type CityViewMode = 'production' | 'queue';
+type CityViewMode = 'production' | 'queue' | 'progress';
 type ProductionAccordionId = 'units' | 'buildings' | 'wonders' | 'corporations' | 'projects';
 
 export interface CityViewAnchor {
@@ -141,11 +143,19 @@ export class CityView {
   private readonly nextTileEl: HTMLDivElement;
   private readonly modeButtonsEl: HTMLDivElement;
   private readonly productionModeButton: HTMLButtonElement;
+  private readonly progressModeButton: HTMLButtonElement;
+  private progressProvider?: (cityId: string) => SettlementProgress;
+
+  setSettlementProgressProvider(provider: (cityId: string) => SettlementProgress): void {
+    this.progressProvider = provider;
+  }
+
   private readonly queueModeButton: HTMLButtonElement;
   private readonly autoCloseCheckbox: HTMLInputElement;
   private readonly modeContentEl: HTMLDivElement;
   private readonly placementStatusEl: HTMLDivElement;
   private readonly tooltipEl: HTMLDivElement;
+  private readonly hintEl: HTMLDivElement;
   private readonly closeCallbacks: CloseCallback[] = [];
   private readonly placementRequestCallbacks: PlacementRequestCallback[] = [];
   private readonly placementCancelCallbacks: PlacementCancelCallback[] = [];
@@ -285,6 +295,7 @@ export class CityView {
 
     this.productionModeButton = this.createModeButton('production', '⚙️ Production');
     this.queueModeButton = this.createModeButton('queue', '📋 Queue');
+    this.progressModeButton = this.createModeButton('progress', 'Progress to next level');
 
     // "Auto Close" sits to the right of the Queue button (pushed right via
     // margin-left:auto). When checked (default), choosing an item that gets
@@ -299,13 +310,13 @@ export class CityView {
     autoCloseText.textContent = 'Auto Close';
     autoCloseLabel.append(this.autoCloseCheckbox, autoCloseText);
 
-    this.modeButtonsEl.append(this.productionModeButton, this.queueModeButton, autoCloseLabel);
+    this.modeButtonsEl.append(this.productionModeButton, this.queueModeButton, this.progressModeButton, autoCloseLabel);
 
     this.modeContentEl = document.createElement('div');
     this.modeContentEl.className = 'city-view-mode-content';
     this.modeContentEl.addEventListener('scroll', () => this.hideTooltip());
 
-    const hint = document.createElement('div');
+    const hint = this.hintEl = document.createElement('div');
     hint.className = 'city-view-hint';
     hint.textContent = 'Hover or focus an item for a larger preview and details. Select a unit to queue it, or a building to choose its tile.';
 
@@ -648,7 +659,11 @@ export class CityView {
 
     this.renderPlacementStatus(placementState);
     this.syncModeButtons();
-    if (this.mode === 'queue') {
+    this.placementStatusEl.hidden = this.mode === 'progress';
+    this.hintEl.hidden = this.mode === 'progress';
+    if (this.mode === 'progress' && this.progressProvider) {
+      this.modeContentEl.replaceChildren(renderSettlementProgress(this.progressProvider(city.id)));
+    } else if (this.mode === 'queue') {
       this.renderQueueMode(queueItems);
     } else {
       this.renderProductionMode(unitOptions, buildingOptions, placementState, wonderOptions, corporationOptions, projectOptions);
@@ -1074,6 +1089,9 @@ export class CityView {
   }
 
   private syncModeButtons(): void {
+    this.progressModeButton.hidden = !this.progressProvider;
+    this.progressModeButton.classList.toggle('city-view-placement-button-active', this.mode === 'progress');
+    this.progressModeButton.setAttribute('aria-pressed', String(this.mode === 'progress'));
     this.productionModeButton.classList.toggle('city-view-placement-button-active', this.mode === 'production');
     this.queueModeButton.classList.toggle('city-view-placement-button-active', this.mode === 'queue');
   }

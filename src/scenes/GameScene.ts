@@ -1,3 +1,4 @@
+import { getSettlementProgress } from '../systems/SettlementProgress';
 import { findFunctioningDock, findDockSpawnTile } from '../systems/NavalProduction';
 import { isUrbanBuilding, isAssignedUrbanBuilding, getSettlementStage, getUrbanSlots, reserveUrbanSlots, canDevelopIntoCity } from '../systems/UrbanDevelopment';
 import { AmbientSprites } from '../systems/rendering/AmbientSprites';
@@ -1341,6 +1342,10 @@ export class GameScene extends Phaser.Scene {
     cityView.setSettlementStageProvider(id => {
       const city = cityManager.getCity(id)!;
       return canDevelopIntoCity(city) ? getSettlementStage(cityManager.getBuildings(id), city) : 'Village · geography prevents City development';
+    });
+    cityView.setSettlementProgressProvider(id => {
+      const city = cityManager.getCity(id)!;
+      return getSettlementProgress(city, cityManager.getBuildings(id), techId => researchSystem.isResearched(city.ownerId, techId));
     });
     let cityViewDismissedCityId: string | null = null;
 
