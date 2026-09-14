@@ -31,6 +31,13 @@ type ProjectRequestCallback = (projectId: string) => void;
 type QueueRemoveRequestCallback = (index: number) => void;
 type QueueBuyRequestCallback = (index: number) => void;
 type CityViewMode = 'production' | 'queue' | 'progress';
+
+/** The action a pinned production preview offers via its "Add to queue" button. */
+interface ProductionConfirm {
+  label: string;
+  disabled: boolean;
+  run: () => void;
+}
 type ProductionAccordionId = 'units' | 'buildings' | 'wonders' | 'corporations' | 'projects';
 
 export interface CityViewAnchor {
@@ -182,6 +189,10 @@ export class CityView {
   // The tile inspector overlay (per-tile debug/yield breakdown) is off by
   // default; the 🔍 toggle next to "Buy Tile" turns it on for the session.
   private tileInspectorEnabled = false;
+  // A production item's preview is normally an ephemeral hover tooltip. Clicking
+  // an item pins that same preview open and reveals its "Add to queue" action;
+  // while pinned, hover events must not steal or dismiss the popup.
+  private tooltipPinned = false;
   private open = false;
   private dragging = false;
   private dragOffsetX = 0;
@@ -319,7 +330,7 @@ export class CityView {
 
     const hint = this.hintEl = document.createElement('div');
     hint.className = 'city-view-hint';
-    hint.textContent = 'Hover or focus an item for a larger preview and details. Select a unit to queue it, or a building to choose its tile.';
+    hint.textContent = 'Click an item for a larger preview and details, then use "Add to queue" to start it (buildings then ask for a tile).';
 
     panel.append(this.headerEl, this.statsEl, this.nextTileEl, this.placementStatusEl, this.modeButtonsEl, this.modeContentEl, hint);
     this.root.append(panel);
@@ -346,6 +357,9 @@ export class CityView {
     document.addEventListener('mousemove', this.handleDocumentMouseMove);
     document.addEventListener('mouseup', this.handleDocumentMouseUp);
     window.addEventListener('resize', this.handleWindowResize);
+    // Capture phase so a pinned preview closes even though the panel stops the
+    // bubbling of its own pointer events before they reach the document.
+    document.addEventListener('pointerdown', this.handleOutsidePointerDown, true);
   }
 
   onCloseRequested(callback: CloseCallback): void {
@@ -478,6 +492,7 @@ export class CityView {
     document.removeEventListener('mousemove', this.handleDocumentMouseMove);
     document.removeEventListener('mouseup', this.handleDocumentMouseUp);
     window.removeEventListener('resize', this.handleWindowResize);
+    document.removeEventListener('pointerdown', this.handleOutsidePointerDown, true);
     this.titleInputEl.removeEventListener('keydown', this.handleTitleInputKeyDown);
     this.titleInputEl.removeEventListener('blur', this.handleTitleInputBlur);
     this.renameButton.removeEventListener('click', this.handleRenameButtonClick);
@@ -492,6 +507,8 @@ export class CityView {
   ): void {
     // Hidden unless the player has explicitly enabled the tile inspector.
     if (!this.tileInspectorEnabled) return;
+    // Never overwrite a pinned production preview with tile-inspector content.
+    if (this.tooltipPinned) return;
     const rows = [
       `<div><strong>Tile</strong> (${breakdown.coord.x}, ${breakdown.coord.y})</div>`,
       `<div><strong>Terrain</strong> ${breakdown.terrainType}</div>`,
@@ -519,7 +536,20 @@ export class CityView {
 
   hideTooltip(): void {
     this.tooltipEl.style.display = 'none';
+    this.tooltipEl.classList.remove('city-view-tooltip-pinned');
+    this.tooltipPinned = false;
   }
+
+  // Dismiss a pinned production preview when the player clicks anywhere that is
+  // neither the preview itself nor another production item (which re-pins).
+  private readonly handleOutsidePointerDown = (event: Event): void => {
+    if (!this.tooltipPinned) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (this.tooltipEl.contains(target)) return;
+    if (target.closest?.('.city-view-production-button')) return;
+    this.hideTooltip();
+  };
 
   private readonly stopPanelInputPropagation = (event: Event): void => {
     // A release inside the panel no longer reaches the document drag listener.
@@ -694,10 +724,10 @@ export class CityView {
         unit?.rangedStrength ? `Ranged strength: ${unit.rangedStrength} • Range: ${unit.range ?? 0}` : undefined,
         unit ? `Upkeep: ${unit.upkeepGold ?? 0} Gold / turn` : undefined,
         option.reason ? `Requirements: ${option.reason}` : undefined,
-      ]);
-      button.addEventListener('click', () => {
-        if (disabled) return;
-        for (const callback of this.unitRequestCallbacks) callback(option.id);
+      ], {
+        label: 'Add to queue',
+        disabled,
+        run: () => { for (const callback of this.unitRequestCallbacks) callback(option.id); },
       });
       grid.append(button);
     }, 'No units available.', option => getUnitTypeById(option.id)?.category);
@@ -737,10 +767,10 @@ export class CityView {
         option.terrainRequirement,
         development,
         option.reason ? `Requirements: ${option.reason}` : undefined,
-      ]);
-      button.addEventListener('click', () => {
-        if (disabled) return;
-        for (const callback of this.placementRequestCallbacks) callback(option.id);
+      ], {
+        label: 'Add to queue',
+        disabled,
+        run: () => { for (const callback of this.placementRequestCallbacks) callback(option.id); },
       });
       grid.append(button);
     }, 'No building placements available for this city.');
@@ -753,10 +783,10 @@ export class CityView {
       const disabled = option.disabled ?? false;
       button.classList.toggle('city-view-placement-button-disabled', disabled);
       button.setAttribute('aria-disabled', String(disabled));
-      this.attachProductionTooltip(button, [option.name, option.description, `${option.cost} production`, option.outputSummary, option.reason]);
-      button.addEventListener('click', () => {
-        if (disabled) return;
-        for (const callback of this.wonderRequestCallbacks) callback(option.id);
+      this.attachProductionTooltip(button, [option.name, option.description, `${option.cost} production`, option.outputSummary, option.reason], {
+        label: 'Add to queue',
+        disabled,
+        run: () => { for (const callback of this.wonderRequestCallbacks) callback(option.id); },
       });
       grid.append(button);
     }, 'No wonders available — research a prerequisite tech.');
@@ -779,10 +809,10 @@ export class CityView {
         disabled ? 'State: Unavailable' : 'State: Available',
         option.reason ? `Requirements: ${option.reason}` : undefined,
         option.outputSummary,
-      ]);
-      button.addEventListener('click', () => {
-        if (disabled) return;
-        for (const callback of this.corporationRequestCallbacks) callback(option.id);
+      ], {
+        label: 'Add to queue',
+        disabled,
+        run: () => { for (const callback of this.corporationRequestCallbacks) callback(option.id); },
       });
       grid.append(button);
     }, 'No corporations available.');
@@ -798,9 +828,10 @@ export class CityView {
         option.description,
         `Current: +${option.goldPerTurn} Gold / turn`,
         'Continuous — never completes; select another item to stop.',
-      ]);
-      button.addEventListener('click', () => {
-        for (const callback of this.projectRequestCallbacks) callback(option.id);
+      ], {
+        label: option.active ? 'Active' : 'Add to queue',
+        disabled: option.active,
+        run: () => { for (const callback of this.projectRequestCallbacks) callback(option.id); },
       });
       grid.append(button);
     }, 'No projects available.');
@@ -1173,44 +1204,86 @@ export class CityView {
     return button;
   }
 
-  private attachProductionTooltip(button: HTMLElement, lines: Array<string | undefined>): void {
+  private attachProductionTooltip(
+    button: HTMLElement,
+    lines: Array<string | undefined>,
+    confirm?: ProductionConfirm,
+  ): void {
     const tooltipLines = lines.filter((line): line is string => Boolean(line));
-    const show = (x: number, y: number): void => {
-      this.showTextTooltip(tooltipLines, x, y);
-      const source = button.querySelector<HTMLImageElement>('img');
-      if (source?.getAttribute('src')) {
-        const preview = document.createElement('img');
-        preview.src = source.src;
-        preview.alt = '';
-        preview.className = 'city-view-preview-image';
-        preview.addEventListener('error', () => { preview.remove(); });
-        this.tooltipEl.prepend(preview);
+    const show = (x: number, y: number, pinned: boolean): void => {
+      this.showProductionTooltip(tooltipLines, button, pinned ? confirm : undefined);
+      if (pinned) {
+        this.tooltipPinned = true;
+        this.tooltipEl.classList.add('city-view-tooltip-pinned');
       }
       button.setAttribute('aria-describedby', this.tooltipEl.id);
       this.positionTooltip(x, y);
     };
-    button.addEventListener('mouseenter', (event) => show(event.clientX, event.clientY));
-    button.addEventListener('mousemove', (event) => this.positionTooltip(event.clientX, event.clientY));
+    button.addEventListener('mouseenter', (event) => {
+      if (this.tooltipPinned) return;
+      show(event.clientX, event.clientY, false);
+    });
+    button.addEventListener('mousemove', (event) => {
+      if (!this.tooltipPinned) this.positionTooltip(event.clientX, event.clientY);
+    });
     button.addEventListener('focus', () => {
+      if (this.tooltipPinned) return;
       const rect = button.getBoundingClientRect();
-      show(rect.right, rect.top);
+      show(rect.right, rect.top, false);
     });
     const hide = (): void => {
+      if (this.tooltipPinned) return;
       button.removeAttribute('aria-describedby');
       this.hideTooltip();
     };
     button.addEventListener('mouseleave', hide);
     button.addEventListener('blur', hide);
     button.addEventListener('keydown', (event) => { if (event.key === 'Escape') hide(); });
-    button.addEventListener('click', hide);
+    // Clicking an item pins its preview open and surfaces the "Add to queue"
+    // action instead of starting production immediately.
+    button.addEventListener('click', () => {
+      const rect = button.getBoundingClientRect();
+      show(rect.right, rect.top, true);
+    });
   }
 
-  private showTextTooltip(lines: readonly string[], screenX: number, screenY: number): void {
+  private showProductionTooltip(
+    lines: readonly string[],
+    button: HTMLElement,
+    confirm?: ProductionConfirm,
+  ): void {
     this.tooltipEl.innerHTML = lines
       .map((line, index) => `<div${index === 0 ? ' style="font-weight:700; margin-bottom:4px;"' : ''}>${escapeHtml(line)}</div>`)
       .join('');
+    const source = button.querySelector<HTMLImageElement>('img');
+    if (source?.getAttribute('src')) {
+      const preview = document.createElement('img');
+      preview.src = source.src;
+      preview.alt = '';
+      preview.className = 'city-view-preview-image';
+      preview.addEventListener('error', () => { preview.remove(); });
+      this.tooltipEl.prepend(preview);
+    }
+    // Make the popup visible before focusing the action below: focus() is a
+    // no-op on a display:none element.
     this.tooltipEl.style.display = 'block';
-    this.positionTooltip(screenX, screenY);
+    if (confirm) {
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.className = 'city-view-popup-confirm';
+      action.textContent = confirm.label;
+      action.disabled = confirm.disabled;
+      action.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (confirm.disabled) return;
+        this.hideTooltip();
+        confirm.run();
+      });
+      this.tooltipEl.append(action);
+      // Hand focus to the action so a keyboard user who opened the popup with
+      // Enter can confirm with a second Enter without tabbing to find it.
+      action.focus({ preventScroll: true });
+    }
   }
 
   private positionTooltip(screenX: number, screenY: number): void {

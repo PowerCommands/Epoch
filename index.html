@@ -1007,6 +1007,34 @@
         pointer-events: none;
       }
       .city-view-tooltip div + div { margin-top: 5px; }
+      /* A pinned preview is interactive (holds the "Add to queue" button); the
+         hover preview stays click-through so it never blocks the item beneath. */
+      .city-view-tooltip-pinned {
+        pointer-events: auto;
+        cursor: default;
+      }
+      /* When there is no preview image, the title is the first child: keep it
+         clear of the floating "Add to queue" button in the top-right corner. */
+      .city-view-tooltip-pinned > div:first-child { padding-right: 108px; }
+      .city-view-popup-confirm {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 2;
+        padding: 7px 14px;
+        border: 1px solid #b88a43;
+        border-radius: 8px;
+        background: linear-gradient(160deg, #2f6d3a, #163a20);
+        color: #eafbe9;
+        font: 700 12px/1 'Segoe UI', Arial, sans-serif;
+        cursor: pointer;
+      }
+      .city-view-popup-confirm:hover { filter: brightness(1.14); }
+      .city-view-popup-confirm:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: linear-gradient(160deg, #3a4a55, #1a262e);
+      }
       .city-view-preview-image {
         display: block;
         width: 100%;
