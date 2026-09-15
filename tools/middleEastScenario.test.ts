@@ -17,30 +17,32 @@ const tile=(q:number,r:number)=>s.map.tiles[r*125+q];
 const inBounds=(q:number,r:number)=>q>=0&&q<125&&r>=0&&r<75;
 const water=(q:number,r:number)=>['ocean','coast'].includes(tile(q,r).type);
 function flood(start:{q:number;r:number},allowed:(q:number,r:number)=>boolean){const seen=new Set([key(start)]),queue=[start];for(let i=0;i<queue.length;i++)for(const[dq,dr]of RIVER_DIRECTIONS){const q=queue[i].q+dq,r=queue[i].r+dr,k=`${q},${r}`;if(inBounds(q,r)&&!seen.has(k)&&allowed(q,r)){seen.add(k);queue.push({q,r});}}return seen;}
-test('Middle East is third by default and respects personal ordering',()=>{
+test('Middle East is fourth by default and respects personal ordering',()=>{
  const entries=JSON.parse(fs.readFileSync('public/assets/maps/manifest.json','utf8')).maps;
- assert.equal(entries.find((e:any)=>e.key==='map_middle_east').order,3);
- assert.equal(orderScenarios(entries,{getItem:()=>null})[2].key,'map_middle_east');
+ assert.equal(entries.find((e:any)=>e.key==='map_middle_east').order,4);
+ assert.equal(orderScenarios(entries,{getItem:()=>null})[3].key,'map_middle_east');
  assert.equal(orderScenarios(entries,{getItem:()=>JSON.stringify(['map_world','map_middle_east'])})[1].key,'map_middle_east');
 });
-test('eight intended modern leaders, 17 correct cities and eight capital Settlers survive loading',()=>{
+test('eight intended modern leaders, 17 correct cities and authored setup survive loading',()=>{
  const parsed=ScenarioLoader.parse(s);
- assert.equal(computeGameDate(resolveScenarioMeta(s.meta),1).year,2025);
- assert.deepEqual([s.map.width,s.map.height],[125,75]);assert.equal(s.nations.length,8);assert.equal(s.cities.length,17);assert.equal(s.units.length,8);
+ assert.equal(computeGameDate(resolveScenarioMeta(s.meta),1).year,2000);
+ assert.deepEqual([s.map.width,s.map.height],[125,75]);assert.equal(s.nations.length,8);assert.equal(s.cities.length,17);assert.equal(s.units.length,0);
  assert.equal(new Set(s.cities.map(key)).size,17);
  for(const[id,leader,capital,count]of expected){
   const nation=parsed.nations.find(n=>n.id==='nation_'+id)!;assert.ok(nation);assert.equal(nation.leaderId ?? getDefaultLeaderByNationId(nation.id)?.id,'leader_'+leader);assert.ok(getLeadersByNationId(nation.id).some(l=>l.id==='leader_'+leader));
   const cities=parsed.cities.filter(c=>c.nationId===nation.id);assert.equal(cities.length,count);assert.deepEqual(cities.filter(c=>c.isCapital).map(c=>c.name),[capital]);
   const city=cities.find(c=>c.isCapital)!;assert.deepEqual(nation.startTerritoryCenter,{q:city.q,r:city.r});
-  assert.deepEqual(parsed.units.filter(u=>u.nationId===nation.id),[{nationId:nation.id,unitTypeId:'settler',q:city.q,r:city.r}]);
-  assert.ok(nation.researchedTechIds?.includes('biology'));
+  assert.deepEqual(parsed.units.filter(u=>u.nationId===nation.id),[]);
+  assert.ok(nation.researchedTechIds?.includes('agriculture'));
  }
- assert.deepEqual(s.initialDiplomacy,[]);assert.deepEqual(s.historicalEvents,[]);
+ assert.deepEqual(s.initialDiplomacy,[]);assert.deepEqual(s.historicalEvents?.map(e=>e.type),['stockMarketCrash','famine','pandemic','energyCrisis','culturalJealousy','reconciliation','luckyLoser','unluckyWinner']);
 });
-test('connected canonical city territories, traversable regional capitals and detached external powers',()=>{
+test('compact city territories and connected national claims preserve regional borders',()=>{
  const all=new Set<string>(),sizes:Record<string,number>={};
- for(const c of s.cities){const owned=new Set(c.ownedTileCoords!.map(key));assert.ok(owned.has(key(c)));assert.equal(flood(c,(q,r)=>owned.has(`${q},${r}`)).size,owned.size,c.name);for(const p of c.ownedTileCoords!){assert.ok(inBounds(p.q,p.r));assert.ok(!water(p.q,p.r));assert.ok(!all.has(key(p)));all.add(key(p));}sizes[c.nationId]=(sizes[c.nationId]??0)+owned.size;}
- for(const n of s.nations){const owned=new Set(s.cities.filter(c=>c.nationId===n.id).flatMap(c=>c.ownedTileCoords!.map(key)));assert.equal(flood(n.startTerritoryCenter,(q,r)=>owned.has(`${q},${r}`)).size,owned.size,n.name);}
+ for(const c of s.cities){const owned=new Set(c.ownedTileCoords!.map(key));assert.ok(owned.has(key(c)));assert.equal(flood(c,(q,r)=>owned.has(`${q},${r}`)).size,owned.size,c.name);assert.ok(owned.size<=19,`${c.name}: compact city area`);for(const p of c.ownedTileCoords!){assert.ok(inBounds(p.q,p.r));assert.ok(!water(p.q,p.r));assert.ok(!all.has(key(p)));all.add(key(p));}sizes[c.nationId]=(sizes[c.nationId]??0)+owned.size;}
+ for(const t of s.map.tiles.filter(t=>t.territorialClaimNationId)){assert.ok(!all.has(key(t)));assert.ok(!water(t.q,t.r));assert.ok(s.nations.some(n=>n.id===t.territorialClaimNationId));all.add(key(t));sizes[t.territorialClaimNationId!]=(sizes[t.territorialClaimNationId!]??0)+1;}
+ assert.equal(s.map.tiles.filter(t=>t.territorialClaimNationId).length,2545);
+ for(const n of s.nations){const owned=new Set([...s.cities.filter(c=>c.nationId===n.id).flatMap(c=>c.ownedTileCoords!.map(key)),...s.map.tiles.filter(t=>t.territorialClaimNationId===n.id).map(key)]);assert.equal(flood(n.startTerritoryCenter,(q,r)=>owned.has(`${q},${r}`)).size,owned.size,n.name);}
  const walkable=(q:number,r:number)=>!water(q,r)&&tile(q,r).type!=='mountain';
  const mainland=flood(s.nations[0].startTerritoryCenter,walkable);
  for(const n of s.nations.slice(0,6))assert.ok(mainland.has(key(n.startTerritoryCenter)),n.name);
@@ -51,12 +53,12 @@ test('connected canonical city territories, traversable regional capitals and de
 });
 test('all resources are legal and all river links survive the loader reciprocally',()=>{
  const parsed=ScenarioLoader.parse(s);assert.equal(s.map.tiles.length,9375);assert.equal(new Set(s.map.tiles.map(key)).size,9375);
- for(const t of s.map.tiles){assert.ok(inBounds(t.q,t.r));const loaded=parsed.mapData.tiles[t.r][t.q];assert.equal(loaded.type,t.type);assert.equal(loaded.resourceId,t.resourceId);assert.equal(loaded.riverConnections,t.riverConnections);
+ for(const t of s.map.tiles){assert.ok(inBounds(t.q,t.r));const loaded=parsed.mapData.tiles[t.r][t.q];assert.equal(loaded.territorialClaimNationId,t.territorialClaimNationId);if(t.territorialClaimNationId)assert.equal(loaded.ownerId,undefined);assert.equal(loaded.type,t.type);assert.equal(loaded.resourceId,t.resourceId);assert.equal(loaded.riverConnections,t.riverConnections);
  if(t.resourceId)assert.ok(getNaturalResourceById(t.resourceId)?.allowedTileTypes.includes(t.type as TileType),`${t.resourceId} ${key(t)}`);
  if(t.riverConnections){assert.notEqual(t.type,'mountain');for(const p of riverNeighbors(t.q,t.r,t.riverConnections)){assert.ok(inBounds(p.q,p.r));assert.ok(riverNeighbors(p.q,p.r,tile(p.q,p.r).riverConnections??0).some(n=>key(n)===key(t)));if(water(t.q,t.r))assert.ok(!water(p.q,p.r));}}
  }
  for(const id of ['horses','iron','niter','coal','oil','natural_gas','aluminum','uranium'])assert.ok(s.map.tiles.some(t=>t.resourceId===id));
  assert.ok(s.map.tiles.filter(t=>t.riverConnections).length>50);
  for(const id of ['oil','natural_gas']){const count=s.map.tiles.filter(t=>t.resourceId===id).length;assert.ok(count>=10&&count<=16);}
- for(const n of s.nations){const coords=new Set(s.cities.filter(c=>c.nationId===n.id).flatMap(c=>c.ownedTileCoords!.map(key)));const resources=s.map.tiles.filter(t=>coords.has(key(t))&&t.resourceId).map(t=>t.resourceId);for(const id of ['wheat','stone','iron','wine'])assert.ok(resources.includes(id),`${n.name}: ${id}`);}
+ for(const n of s.nations){const coords=new Set([...s.cities.filter(c=>c.nationId===n.id).flatMap(c=>c.ownedTileCoords!.map(key)),...s.map.tiles.filter(t=>t.territorialClaimNationId===n.id).map(key)]);const resources=s.map.tiles.filter(t=>coords.has(key(t))&&t.resourceId).map(t=>t.resourceId);for(const id of ['wheat','stone','iron','wine'])assert.ok(resources.includes(id),`${n.name}: ${id}`);}
 });
