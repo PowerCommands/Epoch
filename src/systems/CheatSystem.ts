@@ -383,6 +383,35 @@ export class CheatSystem {
     });
 
     this.register({
+      name: 'warhead',
+      description: 'Mount a Nuclear Warhead on the first conventional ICBM on the selected tile, upgrading it to Nuclear Missile damage and effects. Ignores the national stockpile and Missile Launch Pad requirements. Usage: "warhead".',
+      execute: (args, context) => {
+        if (args.length > 0) return 'Usage: warhead';
+
+        const selection = context.selectionManager.getSelected();
+        const position = selection ? selectionTilePosition(selection) : null;
+        if (!position) return 'No tile selected';
+
+        // Missiles assigned to a Launch Pad are stored off the collision grid, so
+        // getUnitsAt cannot see them. Match on the missile's tile instead (which
+        // equals the pad tile for stored ICBMs and the standing tile otherwise).
+        const icbms = context.unitManager
+          .getAllUnits()
+          .filter((unit) => unit.unitType.id === 'icbm' && unit.isAlive()
+            && unit.carriedByUnitId === undefined
+            && unit.tileX === position.x && unit.tileY === position.y);
+        if (icbms.length === 0) return 'No ICBM on the selected tile';
+
+        const target = icbms.find((unit) => !unit.nuclearArmed);
+        if (!target) return 'Every ICBM on the selected tile is already Nuclear armed';
+
+        target.nuclearArmed = true;
+        context.unitManager.notifyActionChanged(target.id);
+        return `Mounted a Nuclear Warhead on ${target.name} at (${position.x}, ${position.y}). It now delivers Nuclear Missile damage.`;
+      },
+    });
+
+    this.register({
       name: 'building',
       description: 'Build a building on the selected tile for a nation (defaults to the player). City-wide buildings (Walls, Castle, ...) need a selected city tile; others need a tile claimed by that nation. Upgrade/downgrade and terrain correctness are up to you. Usage: "building <buildingId> [nation]". Cannot build World Wonders or on unclaimed tiles.',
       execute: (args, context) => {
