@@ -123,6 +123,33 @@ export function unprojectPlanetary(x: number, y: number, view: PlanetaryView): {
   };
 }
 
+/** Forward counterpart of the live globe shader. Input is a point in the
+ * unfiltered camera image; altitude is a fraction of the visual globe radius.
+ * Elevated objects may show beyond the limb, but never through the planet. */
+export function projectPlanetary(x: number, y: number, view: PlanetaryView, altitude = 0): { x: number; y: number; depth: number } | null {
+  if (view.strength <= 0) return { x, y, depth: 1 };
+  const { radius, scaleX, scaleY, shear } = planetaryParameters(view);
+  const bend = Math.sqrt(view.strength);
+  const destination = view.navigation ? globeDestination(view) : null;
+  const offsetX = destination ? (destination.x - view.navigation!.centerX) * view.zoom : 0;
+  const offsetY = destination ? (destination.y - view.navigation!.centerY) * view.zoom : 0;
+  const dy = y - view.height / 2 - offsetY;
+  const yaw = (view.navigation?.longitude ?? 0) * view.strength;
+  const pitch = (view.navigation?.latitude ?? 0) * view.strength;
+  const longitude = (x - view.width / 2 - offsetX - shear * dy) * bend / scaleX;
+  const latitude = dy * bend / scaleY + pitch;
+  const px = Math.sin(longitude) * Math.cos(latitude);
+  const sy = Math.sin(latitude), sz = Math.cos(longitude) * Math.cos(latitude);
+  const py = sy * Math.cos(pitch) - sz * Math.sin(pitch);
+  const depth = sz * Math.cos(pitch) + sy * Math.sin(pitch);
+  const height = 1 + Math.max(0, altitude);
+  if (depth < 0 && (px * px + py * py) * height * height < 1) return null;
+  // Finite maps never repeat during the partially curved transition.
+  if (view.strength < 0.999 && Math.abs(longitude + yaw) > Math.PI) return null;
+  return { x: view.width / 2 + px * radius / bend * height,
+    y: view.height / 2 + py * radius / bend * height, depth };
+}
+
 /** Visible source footprint, used to constrain panning without pinning the
  * planet to a corner when the flat framebuffer is wider than the map. */
 export function planetaryHalfExtents(view: PlanetaryView): { x: number; y: number } {

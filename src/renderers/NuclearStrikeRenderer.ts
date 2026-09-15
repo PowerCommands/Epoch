@@ -3,8 +3,7 @@ import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import type { StrategicDetonation, StrategicWeaponsSystem } from '../systems/StrategicWeaponsSystem';
 import type { TileMap } from '../systems/TileMap';
 
-const SMOKE_TEXTURE = 'nuclear-smoke-puff';
-const FIREBALL_TEXTURE = 'nuclear-fireball-glow';
+import { ensureNuclearEffectTextures, SMOKE_TEXTURE, FIREBALL_TEXTURE } from './NuclearEffectTextures';
 const MAX_STRIKES = 3;
 const CLOUD_MS = 10500;
 const DEPTH = 46;
@@ -48,7 +47,7 @@ export class NuclearStrikeRenderer {
   }
 
   private readonly play = (event: StrategicDetonation): void => {
-    if (this.disposed || !this.enabled() || !event.nuclear || event.accident) return;
+    if (this.disposed || !this.enabled() || (!event.nuclear && !event.intercepted) || event.accident || event.weaponId === 'icbm') return;
     const targetVisible = this.visible(event.target.x, event.target.y);
     if (!targetVisible && (!event.origin || !this.visible(event.origin.x, event.origin.y))) return;
     this.ensureTexture();
@@ -60,7 +59,7 @@ export class NuclearStrikeRenderer {
     const radius = tile.width * (blast + 0.5);
     const groundY = tile.height * (blast * 0.75 + 0.5);
     const distance = Math.hypot(target.x - origin.x, target.y - origin.y);
-    const flightMs = event.weaponId === 'nuclear_missile' && event.origin
+    const flightMs = ['nuclear_missile', 'guided_missile'].includes(event.weaponId) && event.origin
       ? Math.max(1900, Math.min(3400, 1600 + distance * 2)) : 550;
     const cloud = this.scene.add.container(target.x, target.y).setDepth(DEPTH).setName('nuclear-cloud');
     const puffs = (count: number, offset: number): Puff[] => Array.from({ length: count }, (_, i) => {
@@ -75,7 +74,7 @@ export class NuclearStrikeRenderer {
       cloud, column: puffs(18, 0), cap: puffs(30, 18), dust: puffs(36, 48) };
     // A small region of the old terrain sits below fog and every other map layer.
     // It is discarded under opaque blast dust, never stored in a save.
-    if (targetVisible && radius * 2 < 2048 && groundY * 2 < 2048) {
+    if (targetVisible && !event.intercepted && radius * 2 < 2048 && groundY * 2 < 2048) {
       strike.terrain = this.tileMap.captureTerrain({ x: target.x - radius, y: target.y - groundY,
         width: radius * 2, height: groundY * 2 });
     }
@@ -92,7 +91,7 @@ export class NuclearStrikeRenderer {
     this.lastDraw = 0;
     for (let i = this.strikes.length - 1; i >= 0; i--) {
       const strike = this.strikes[i];
-      if (strike.age >= strike.flightMs + CLOUD_MS) {
+      if (strike.age >= strike.flightMs + (strike.event.intercepted ? 1600 : CLOUD_MS)) {
         this.destroyStrike(strike); this.strikes.splice(i, 1);
       } else this.draw(strike);
     }
@@ -102,11 +101,24 @@ export class NuclearStrikeRenderer {
   private draw(s: Strike): void {
     s.graphics.clear();
     const targetVisible = this.visible(s.event.target.x, s.event.target.y);
-    s.cloud.setVisible(targetVisible);
-    s.fireball.setVisible(targetVisible);
+    s.cloud.setVisible(targetVisible && !s.event.intercepted);
+    s.fireball.setVisible(targetVisible && !s.event.intercepted);
     s.terrain?.setVisible(targetVisible);
-    if (s.age < s.flightMs) { this.drawFlight(s); return; }
+    if (s.age < s.flightMs) { this.drawFlight(s); this.drawDefense(s); return; }
     const t = (s.age - s.flightMs) / 1000;
+    if (s.event.intercepted) {
+      const point = this.flightPoint(s, 0.78);
+      if (!this.pointVisible(point)) return;
+      const fade = 1 - smooth(t / 1.6), radius = 10 + t * 45;
+      s.graphics.fillStyle(0xe2f5ff, fade * 0.6).fillCircle(point.x, point.y, radius * 0.5);
+      s.graphics.lineStyle(2, 0x9ddfff, fade).strokeCircle(point.x, point.y, radius);
+      for (let i = 0; i < 16; i++) {
+        const angle = i * 2.39996, spread = radius * (0.5 + noise(i));
+        s.graphics.fillStyle(0xffd39b, fade).fillCircle(point.x + Math.cos(angle) * spread,
+          point.y + Math.sin(angle) * spread + t * t * 12, 1.5);
+      }
+      return;
+    }
     if (!s.impacted) {
       s.impacted = true;
       const view = this.scene.cameras.main.worldView;
@@ -137,13 +149,13 @@ export class NuclearStrikeRenderer {
 
   private drawFlight(s: Strike): void {
     const g = s.graphics;
-    if (s.event.weaponId !== 'nuclear_missile' || !s.event.origin) {
+    if (!['nuclear_missile', 'guided_missile'].includes(s.event.weaponId) || !s.event.origin) {
       if (!this.visible(s.event.target.x, s.event.target.y)) return;
       const p = s.age / s.flightMs;
       g.fillStyle(0x252c32).fillEllipse(s.target.x, s.target.y - 38 * (1 - p * p), 9, 18);
       return;
     }
-    const progress = s.age / s.flightMs;
+    const progress = s.age / s.flightMs * (s.event.intercepted ? 0.78 : 1);
     // Historical path samples form a bounded trail, including a lingering launch plume.
     for (let i = 30; i >= 1; i--) {
       const earlier = progress - i * 0.014;
@@ -177,6 +189,26 @@ export class NuclearStrikeRenderer {
     g.fillStyle(0xfef9dd).fillTriangle(12, -3, 12, 3, 19, 0);
     g.fillStyle(0x637480).fillRect(-7, 1, 17, 2);
     g.restore();
+  }
+
+  /** Ordinary missile defense keeps its short tactical flight presentation. */
+  private drawDefense(s: Strike): void {
+    const attempts = (s.event.interceptions ?? []).slice(-5);
+    attempts.forEach((attempt, index) => {
+      const start = s.flightMs * (0.45 + index / Math.max(1, attempts.length) * 0.3);
+      const duration = attempt.success ? s.flightMs - start : Math.min(450, s.flightMs * 0.2);
+      const p = (s.age - start) / duration;
+      if (p < 0 || p > 1) return;
+      if (!this.visible(attempt.battery.x, attempt.battery.y)) return;
+      const origin = this.tileMap.tileToWorld(attempt.battery.x, attempt.battery.y);
+      const target = this.flightPoint(s, attempt.success ? 0.78 : (start + duration) / s.flightMs * (s.event.intercepted ? 0.78 : 1));
+      const x = origin.x + (target.x - origin.x + (attempt.success ? 0 : 18)) * p;
+      const y = origin.y + (target.y - origin.y - (attempt.success ? 0 : 18)) * p - Math.sin(p * Math.PI) * 25;
+      s.graphics.lineStyle(1.5, 0xa9e4ff, 0.8);
+      s.graphics.beginPath(); s.graphics.moveTo(origin.x, origin.y); s.graphics.lineTo(x, y); s.graphics.strokePath();
+      s.graphics.fillStyle(0xf2fdff).fillCircle(x, y, 2.5);
+      if (!attempt.success && p > 0.7) s.graphics.lineStyle(2, 0x96d5ff, (1 - p) * 3).strokeCircle(x, y, 6 + (p - 0.7) * 30);
+    });
   }
 
   private drawCloud(s: Strike, t: number): void {
@@ -253,34 +285,7 @@ export class NuclearStrikeRenderer {
     }
   }
 
-  private ensureTexture(): void {
-    if (!this.scene.textures.exists(FIREBALL_TEXTURE)) {
-      const glow = this.scene.textures.createCanvas(FIREBALL_TEXTURE, 128, 128)!;
-      const gradient = glow.context.createRadialGradient(64, 64, 0, 64, 64, 64);
-      gradient.addColorStop(0, '#ffffef');
-      gradient.addColorStop(0.3, '#fff6cc');
-      gradient.addColorStop(0.48, '#ffdb81');
-      gradient.addColorStop(0.65, 'rgba(255,142,38,0.85)');
-      gradient.addColorStop(0.83, 'rgba(245,85,20,0.3)');
-      gradient.addColorStop(1, 'rgba(225,65,15,0)');
-      glow.context.fillStyle = gradient; glow.context.fillRect(0, 0, 128, 128); glow.refresh();
-    }
-    if (this.scene.textures.exists(SMOKE_TEXTURE)) return;
-    const texture = this.scene.textures.createCanvas(SMOKE_TEXTURE, 128, 128)!;
-    const ctx = texture.context;
-    // One reusable shaded smoke brush; the mushroom silhouette is entirely animated.
-    for (let i = 0; i < 9; i++) {
-      const angle = i * 2.39996, offset = i ? 22 : 0;
-      const x = 64 + Math.cos(angle) * offset, y = 64 + Math.sin(angle) * offset;
-      const gradient = ctx.createRadialGradient(x - 8, y - 11, 2, x, y, 40);
-      gradient.addColorStop(0, 'rgba(255,250,233,0.94)');
-      gradient.addColorStop(0.5, 'rgba(225,223,213,0.85)');
-      gradient.addColorStop(0.78, 'rgba(190,191,185,0.4)');
-      gradient.addColorStop(1, 'rgba(178,181,176,0)');
-      ctx.fillStyle = gradient; ctx.fillRect(0, 0, 128, 128);
-    }
-    texture.refresh();
-  }
+  private ensureTexture(): void { ensureNuclearEffectTextures(this.scene); }
 
   private destroyStrike(s: Strike): void {
     s.terrain?.destroy(); s.cloud.destroy(true); s.graphics.destroy(); s.fireball.destroy();

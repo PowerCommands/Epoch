@@ -154,7 +154,8 @@ export const BUILDING_AMBIENT: Record<string, AmbientProfile> = {
   wind_turbine: {effects: [], rotors: [{x:.492,y:.41,radius:.38,blades:3,period:7,color:0xd4d9d6,tips:[[.436,.04],[.266,.545],[.77,.61]]}]},
   windmill: {effects: [], rotors: [{x:.5,y:.422,radius:.29,blades:4,period:13,color:0x9e7c3f,tips:[[.354,.203],[.646,.203],[.646,.605],[.354,.605]]}]},
   workshop: p(e('dust',.45,.66,.55,0xc9aa77,7)),
-  zoo: p(e('people',.5,.68,.65),e('birds',.56,.4,.5)), nuclear_silo: {effects:[],note:'Open hatch and stored missile; no operational lamp in the SVG.'},
+  zoo: p(e('people',.5,.68,.65),e('birds',.56,.4,.5)), nuclear_silo: {effects:[],note:'Four reinforced magazine hatches and launch gantry remain still until a strategic launch.'},
+  patriot_missile_battery: {effects:[],note:'Radar array and elevated missile canisters remain still; interception animation owns firing.'},
 };
 
 /** Each landmark was reviewed independently; anchors follow the actual art.
@@ -254,7 +255,7 @@ UNIT_AMBIENT.scout_boat = {
 units('worker_action worker_action_improvement workboat_action work_boat_action_improvement',{
   effects:[],note:'These files depict construction signs, not workers/boats. Keep the sign stationary.'});
 UNIT_AMBIENT.embarked_boat = {effects:[e('water',.5,.68,.7)],float:.026,note:'Small side-profile launch with pronounced rigid hull bobbing for embarked land units.'};
-units('agent atomic_bomb guided_missile nuclear_missile leaders', {effects: [], note: 'Covert portraits, stored ordnance and UI symbol remain still.'});
+units('agent atomic_bomb guided_missile nuclear_missile icbm leaders', {effects: [], note: 'Covert portraits, stored ordnance and UI symbol remain still.'});
 
 UNIT_AMBIENT.spy = {
   effects: [], hideBase: true,

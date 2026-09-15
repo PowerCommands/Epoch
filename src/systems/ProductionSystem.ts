@@ -12,6 +12,9 @@ import { getCityIntegrationProgress } from './CityIntegrationSystem';
 import type { NationManager } from './NationManager';
 import { getBuildingById } from '../data/buildings';
 import { isMilitaryProductionUnit } from './ProductionRules';
+import { NUCLEAR_WARHEAD } from '../data/strategicComponents';
+import { getTechnologyById } from '../data/technologies';
+import { getResourceDisplayName } from '../data/resources';
 
 export const SETTLER_PRODUCTION_SLOT_BLOCK_REASON = 'Another Settler is already being produced.';
 export const SETTLER_PRODUCTION_COST_INCREASE = 0.25;
@@ -125,9 +128,30 @@ export class ProductionSystem {
   private productionDiversionProvider: ProductionDiversionProvider = () => 0;
   private itemProductionCostProvider: ItemProductionCostProvider = (_cityId, _item, baseCost) => baseCost;
   private itemProductionBlockReasonProvider: ItemProductionBlockReasonProvider = () => undefined;
+  private strategicComponentResourceAccess: (nationId: string, resourceId: string, amount: number) => boolean = () => false;
   private navalDockAvailable = (cityId: string): boolean => this.cityManager.getBuildings(cityId)?.hasActive(DOCK.id) === true;
 
   setNavalDockAvailable(provider: (cityId: string) => boolean): void { this.navalDockAvailable = provider; }
+
+  setStrategicComponentResourceAccessProvider(provider: (nationId: string, resourceId: string, amount: number) => boolean): void {
+    this.strategicComponentResourceAccess = provider;
+  }
+
+  private strategicComponentProductionReason(cityId: string, item: Producible): string | undefined {
+    if (item.kind !== 'strategicComponent') return undefined;
+    const ownerId = this.cityManager.getCity(cityId)?.ownerId;
+    const nation = ownerId ? this.nationManager?.getNation(ownerId) : undefined;
+    if (!nation) return 'Strategic component production requires an owning nation';
+    const component = item.componentType;
+    if (!nation.researchedTechIds.includes(component.requiredTechId)) {
+      return `Requires ${getTechnologyById(component.requiredTechId)?.name ?? component.requiredTechId}`;
+    }
+    const resource = component.requiredResource;
+    if (!this.strategicComponentResourceAccess(nation.id, resource.resourceId, resource.amount)) {
+      return `Requires ${getResourceDisplayName(resource.resourceId)}`;
+    }
+    return undefined;
+  }
 
   private navalProductionReason(cityId: string, item: Producible): string | undefined {
     return item.kind === 'unit' && item.unitType.isNaval && !this.navalDockAvailable(cityId)
@@ -504,7 +528,7 @@ export class ProductionSystem {
     if (options.settlerProductionSlotException !== 'expeditionFollowUp' && this.isSettler(item) && this.hasQueuedSettlerForCityOwner(cityId)) {
       return SETTLER_PRODUCTION_SLOT_BLOCK_REASON;
     }
-    return this.navalProductionReason(cityId, item) ?? this.aircraftProductionReason(cityId, item) ?? this.productionProhibition(cityId, item) ?? this.itemProductionBlockReasonProvider(cityId, item);
+    return this.navalProductionReason(cityId, item) ?? this.aircraftProductionReason(cityId, item) ?? this.productionProhibition(cityId, item) ?? this.strategicComponentProductionReason(cityId, item) ?? this.itemProductionBlockReasonProvider(cityId, item);
   }
 
   private aircraftDestination: (cityId: string) => import('../entities/Unit').AircraftBase | undefined = () => undefined;
@@ -599,7 +623,7 @@ export class ProductionSystem {
   private tryComplete(cityId: string, entry: QueueEntry): boolean {
     // The queued Settler itself owns the nation slot, so completion only checks
     // external blockers here; the slot guard applies when committing new work.
-    const externalBlockReason = this.navalProductionReason(cityId, entry.item) ?? this.aircraftProductionReason(cityId, entry.item) ?? this.productionProhibition(cityId, entry.item) ?? this.itemProductionBlockReasonProvider(cityId, entry.item);
+    const externalBlockReason = this.navalProductionReason(cityId, entry.item) ?? this.aircraftProductionReason(cityId, entry.item) ?? this.productionProhibition(cityId, entry.item) ?? this.strategicComponentProductionReason(cityId, entry.item) ?? this.itemProductionBlockReasonProvider(cityId, entry.item);
     if (externalBlockReason !== undefined) {
       entry.blockedReason = externalBlockReason;
       return false;
@@ -624,6 +648,11 @@ export class ProductionSystem {
       const ownerId = this.cityManager.getCity(cityId)?.ownerId;
       const nation = ownerId ? this.nationManager?.getNation(ownerId) : undefined;
       if (nation) nation.settlersProduced += 1;
+    }
+    if (entry.item.kind === 'strategicComponent' && entry.item.componentType.id === NUCLEAR_WARHEAD.id) {
+      const ownerId = this.cityManager.getCity(cityId)?.ownerId;
+      const nation = ownerId ? this.nationManager?.getNation(ownerId) : undefined;
+      if (nation) nation.nuclearWarheads += 1;
     }
     for (const cb of this.completedSuccessfullyListeners) cb(cityId, entry.item, entry);
     return true;
@@ -726,6 +755,8 @@ export class ProductionSystem {
         return item.corporationType.productionCost;
       case 'manufacturedResource':
         return item.productionType.productionCost;
+      case 'strategicComponent':
+        return item.componentType.productionCost;
       case 'project':
         // Repeatable projects never accumulate toward completion.
         return 0;
@@ -748,6 +779,8 @@ export class ProductionSystem {
         return 'Corporation already founded or requirements no longer met';
       case 'manufacturedResource':
         return 'Manufactured resource requirements are no longer met';
+      case 'strategicComponent':
+        return 'Strategic component requirements are no longer met';
       case 'project':
         return undefined;
       case 'tradeRoute':

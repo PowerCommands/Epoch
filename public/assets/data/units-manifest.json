@@ -427,6 +427,13 @@
       "isNaval": false
     },
     {
+      "id": "icbm",
+      "name": "ICBM",
+      "era": "information",
+      "category": "air",
+      "isNaval": false
+    },
+    {
       "id": "xcom_squad",
       "name": "XCOM Squad",
       "era": "information",

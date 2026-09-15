@@ -469,10 +469,21 @@
     },
     {
       "id": "nuclear_silo",
-      "name": "Nuclear Silo",
-      "era": "information",
-      "placement": "city",
+      "name": "Missile Launch Pad",
+      "era": "atomic",
+      "placement": "land",
+      "repeatable": true,
+      "requiresEmptyTile": true,
       "iconPath": "assets/sprites/buildings/nuclear_silo.svg"
+    },
+    {
+      "id": "patriot_missile_battery",
+      "name": "Patriot Missile Battery",
+      "era": "information",
+      "placement": "land",
+      "repeatable": true,
+      "requiresEmptyTile": true,
+      "iconPath": "assets/sprites/buildings/patriot_missile_battery.svg"
     },
     {
       "id": "police_station",

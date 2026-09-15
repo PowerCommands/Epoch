@@ -35,6 +35,13 @@
   var MAINTAIN_NUCLEAR_PLANT = "maintain_nuclear_plant";
 
   // src/data/strategicWeapons.ts
+  var ATOMIC_DAMAGE = { unitDamage: 120, cityDamage: 180, populationLoss: 0.5, buildingDamageFraction: 0.6 };
+  var STRATEGIC_WEAPONS = {
+    guided_missile: { radius: 1, unitDamage: 60, cityDamage: 70, populationLoss: 0, buildingDamageFraction: 0.15, nuclear: false, createsWaste: false, destroysImprovements: true, carrierIds: ["nuclear_submarine"], landLaunch: "any" },
+    atomic_bomb: { ...ATOMIC_DAMAGE, radius: 3, nuclear: true, createsWaste: true, destroysImprovements: true, carrierIds: ["bomber", "stealth_bomber"], landLaunch: "none" },
+    nuclear_missile: { radius: 4, unitDamage: 160, cityDamage: 240, populationLoss: 0.65, buildingDamageFraction: 0.8, nuclear: true, createsWaste: true, destroysImprovements: true, carrierIds: ["nuclear_submarine"], landLaunch: "silo" },
+    icbm: { ...ATOMIC_DAMAGE, radius: 2, nuclear: false, createsWaste: false, destroysImprovements: true, carrierIds: [], landLaunch: "silo", globalRange: true }
+  };
   var NUCLEAR_CLEANUP_TURNS = 5;
 
   // src/data/improvements.ts

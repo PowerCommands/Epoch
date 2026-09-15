@@ -29,6 +29,8 @@ export interface UnitConfig {
   createdRound?: number;
   expiresAtRound?: number;
   airBase?: AircraftBase;
+  missileLaunchPad?: { x: number; y: number };
+  nuclearArmed?: boolean;
   carriedByUnitId?: string;
   cargoUnitIds?: string[];
   qualityLevel?: MilitaryQualityLevel;
@@ -51,6 +53,10 @@ export class Unit {
   movementPoints: number;
   health: number;
   airBase?: AircraftBase;
+  /** Stored missile's assigned facility, retained while the pad is broken. */
+  missileLaunchPad?: { x: number; y: number };
+  /** ICBMs start conventional and consume a warhead when armed. */
+  nuclearArmed?: boolean;
   carriedByUnitId?: string;
   cargoUnitIds: string[];
   isSleeping: boolean;
@@ -81,6 +87,8 @@ export class Unit {
     this.movementPoints = config.movementPoints ?? this.maxMovementPoints;
     this.health = config.unitType.baseHealth;
     this.airBase = config.airBase;
+    this.missileLaunchPad = config.missileLaunchPad ? { ...config.missileLaunchPad } : undefined;
+    this.nuclearArmed = config.nuclearArmed ?? false;
     this.carriedByUnitId = config.carriedByUnitId;
     this.cargoUnitIds = [...(config.cargoUnitIds ?? [])];
     this.isSleeping = false;

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { PlanetaryRenderer } from './rendering/PlanetaryRenderer';
-import { GLOBE_LATITUDE_LIMIT, GLOBE_LONGITUDE_SPAN, globeDestination, globeOrientation, type PlanetarySurface, wrapLongitude, planetaryHalfExtents, unprojectPlanetary } from './rendering/PlanetaryProjection';
+import { GLOBE_LATITUDE_LIMIT, GLOBE_LONGITUDE_SPAN, globeDestination, globeOrientation, type PlanetarySurface, type PlanetaryView, wrapLongitude, planetaryHalfExtents, unprojectPlanetary, projectPlanetary } from './rendering/PlanetaryProjection';
 import type { WorldInputGate } from './input/WorldInputGate';
 import { isPointerEventConsumed } from '../utils/phaserScreenSpaceUi';
 
@@ -8,6 +8,13 @@ const PAN_SPEED = 400;  // pixlar/sekund vid zoom 1.0
 const ZOOM_STEP = 0.1;
 const DEFAULT_ZOOM_MIN = 0.15;
 const ZOOM_MAX = 10.0;
+
+export interface CinematicCameraState {
+  zoom: number;
+  centerX: number;
+  centerY: number;
+  navigation: { longitude: number; latitude: number } | null;
+}
 
 /**
  * CameraController hanterar all kamerainput: panorering med mus och
@@ -25,7 +32,10 @@ export class CameraController {
   private globeZoomDestination: { x: number; y: number } | null = null;
   private globeExiting = false;
   private globeDragStart = { longitude: 0, latitude: 0 };
+  private cinematic = false;
+  private disposed = false;
   get isGlobeNavigationActive(): boolean { return !!this.planetary?.navigation; }
+  get isCinematicActive(): boolean { return this.cinematic; }
   private keyboardCaptured(): boolean {
     const active = document.activeElement;
     return this.worldInputGate.isWorldInteractionBlocked() || (active instanceof HTMLElement &&
@@ -74,7 +84,7 @@ export class CameraController {
     this.globeHint.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);max-width:60vw;padding:8px 14px;border:1px solid #52758b;border-radius:6px;background:#101d2ee8;color:#e5eff6;font:13px sans-serif;text-align:center;pointer-events:none;z-index:20';
     this.globeHint.hidden = true;
     document.body.appendChild(this.globeHint);
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.globeHint.remove());
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { this.disposed = true; this.globeHint.remove(); });
     this.fallbackMinZoom = minZoom;
     if (scene.game.renderer.type === Phaser.WEBGL) {
       this.planetary = new PlanetaryRenderer(this.cam, scene.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer, worldWidth, worldHeight, surface);
@@ -116,6 +126,12 @@ export class CameraController {
 
   /** Anropas varje frame från GameScene.update(). */
   update(delta: number): void {
+    if (this.disposed) return;
+    if (this.cinematic) {
+      this.globeHint.hidden = true;
+      this.planetary?.update();
+      return;
+    }
     if (this.cam.zoom < this.minZoom) {
       if (this.isGlobeNavigationActive) this.cam.zoom = this.minZoom;
       else this.setZoom(this.minZoom);
@@ -134,12 +150,14 @@ export class CameraController {
 
   /** Centrera kameran på en världsposition och sätt ett specifikt zoom-värde. */
   focusOn(worldX: number, worldY: number, zoom: number): void {
+    if (this.cinematic) return;
     this.setZoom(zoom);
     this.cam.centerOn(worldX, worldY);
   }
 
   /** Change zoom while preserving the current camera centre. */
   setZoom(zoom: number): void {
+    if (this.cinematic) return;
     this.targetZoom = null;
     this.globeZoomDestination = null;
     if (this.planetary) this.planetary.navigation = null;
@@ -161,6 +179,56 @@ export class CameraController {
 
   get scrollY(): number {
     return this.cam.scrollY;
+  }
+
+  /** Presentation-only ownership. Turns and combat never wait on this camera. */
+  beginCinematic(): CinematicCameraState | undefined {
+    if (this.cinematic || this.disposed) return undefined;
+    const state: CinematicCameraState = { zoom: this.cam.zoom,
+      centerX: this.cam.scrollX + this.cam.width / 2, centerY: this.cam.scrollY + this.cam.height / 2,
+      navigation: this.planetary?.navigation ? { ...this.planetary.navigation } : null };
+    this.cinematic = true;
+    this.pointerIsDown = false;
+    this.didDrag = false;
+    this.targetZoom = null;
+    this.globeZoomDestination = null;
+    this.globeExiting = false;
+    return state;
+  }
+
+  get cinematicGlobeView(): PlanetaryView | undefined { return this.planetary?.view; }
+  get cinematicZoomRange(): { min: number; start: number } {
+    return this.planetary?.range ?? { min: this.minZoom, start: this.minZoom * 2.4 };
+  }
+
+  /** Uses the same globe orientation, source framing and shader as G / wheel. */
+  setCinematicView(worldX: number, worldY: number, zoom: number): void {
+    if (!this.cinematic || this.disposed) return;
+    this.cam.zoom = Phaser.Math.Clamp(zoom, this.minZoom, ZOOM_MAX);
+    if (this.planetary) {
+      this.planetary.navigation = globeOrientation(worldX, worldY, this.planetary.view);
+      this.syncGlobeCamera();
+      this.planetary.update();
+    } else this.cam.centerOn(worldX, worldY);
+  }
+
+  projectCinematicPoint(worldX: number, worldY: number, altitude = 0): { x: number; y: number; depth: number } | null {
+    const x = this.cam.width / 2 + (worldX - this.cam.scrollX - this.cam.width / 2) * this.cam.zoom;
+    const y = this.cam.height / 2 + (worldY - this.cam.scrollY - this.cam.height / 2) * this.cam.zoom;
+    const point = this.planetary ? projectPlanetary(x, y, this.planetary.view, altitude) : { x, y, depth: 1 };
+    return point ? { ...point, x: point.x + this.cam.x, y: point.y + this.cam.y } : null;
+  }
+
+  endCinematic(restore?: CinematicCameraState): void {
+    if (!this.cinematic) return;
+    this.cinematic = false;
+    if (this.disposed) return;
+    if (restore) {
+      this.cam.zoom = restore.zoom;
+      if (this.planetary) this.planetary.navigation = restore.navigation;
+      this.cam.centerOn(restore.centerX, restore.centerY);
+    } else if (this.planetary && this.planetary.view.strength === 0) this.planetary.navigation = null;
+    this.planetary?.update();
   }
 
   /** Flat-world footprint of the visible surface, also used by the minimap. */

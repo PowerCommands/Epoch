@@ -330,7 +330,7 @@ const RESOLUTIONS: readonly ResolutionDefinitionConfig[] = [
   {
     id: 'nuclear_non_proliferation_treaty',
     title: 'Nuclear Non-Proliferation Treaty',
-    description: 'Member nations agree to prohibit production of new Atomic Bombs and Nuclear Missiles.',
+    description: 'Member nations agree to prohibit production of new Atomic Bombs, Nuclear Missiles and Nuclear Warheads. Conventional ICBMs remain legal; existing nuclear arsenals are retained.',
     icon: '☢',
     votingType: 'influence',
     organizationKind: 'un',

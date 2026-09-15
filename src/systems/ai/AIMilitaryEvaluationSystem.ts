@@ -1,6 +1,7 @@
 import { getNuclearCapability } from './AIStrategicWeapons';
 import type { UnitManager } from '../UnitManager';
 import type { CityManager } from '../CityManager';
+import type { MissileStorageSystem } from '../MissileStorageSystem';
 import type { DiplomacyManager } from '../DiplomacyManager';
 import type { AllianceManager } from '../diplomacy/AllianceManager';
 import { CITY_BASE_HEALTH, CITY_BASE_DEFENSE } from '../../data/cities';
@@ -40,6 +41,8 @@ const STRONGER_RATIO = 1.25;
 const WEAKER_RATIO = 0.75;
 
 export class AIMilitaryEvaluationSystem {
+  private missileStorage?: MissileStorageSystem;
+  setMissileStorageSystem(storage: MissileStorageSystem): void { this.missileStorage = storage; }
   private peacekeepingDefensivePowerProvider: PeacekeepingDefensivePowerProvider = () => 0;
   private readonly strengthCache = new Map<string, MilitaryStrengthBreakdown>();
   private readonly knownUnitOwners = new Map<string, string>();
@@ -157,8 +160,8 @@ export class AIMilitaryEvaluationSystem {
 
   /** Detailed breakdown of {@link getDefensiveWarPowerAgainst}, for logging. */
   getDefensiveWarPowerBreakdown(attackerNationId: string, defenderNationId: string): DefensiveWarPowerBreakdown {
-    const deterrent = getNuclearCapability(defenderNationId, this.unitManager, this.cityManager).deterrence;
-    const mutualNuclearRisk = getNuclearCapability(attackerNationId, this.unitManager, this.cityManager).ready > 0 ? 1.5 : 1;
+    const deterrent = getNuclearCapability(defenderNationId, this.unitManager, this.cityManager, this.missileStorage).deterrence;
+    const mutualNuclearRisk = getNuclearCapability(attackerNationId, this.unitManager, this.cityManager, this.missileStorage).ready > 0 ? 1.5 : 1;
     const defenderPower = this.getMilitaryStrength(defenderNationId).totalStrength + deterrent * mutualNuclearRisk;
     const allyNationId = this.allianceManager?.getAllyNationId(defenderNationId) ?? null;
     const peacekeepingPower = Math.max(0, this.peacekeepingDefensivePowerProvider(

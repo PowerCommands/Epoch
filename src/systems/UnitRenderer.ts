@@ -443,7 +443,7 @@ export class UnitRenderer {
   }
 
   private isCargo(unit: Unit): boolean {
-    return !!unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined;
+    return !!unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined || !!unit.missileLaunchPad;
   }
 }
 

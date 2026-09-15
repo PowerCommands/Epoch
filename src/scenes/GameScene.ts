@@ -12,10 +12,14 @@ import { DiplomaticAffairSystem } from '../systems/diplomacy/DiplomaticAffairSys
 import { nuclearPlantAtRisk, NUCLEAR_PLANT_MELTDOWN_CHANCE, NUCLEAR_PLANT_RISK_FRACTION } from '../data/nuclearPlants';
 import { AirMissionRenderer } from '../renderers/AirMissionRenderer';
 import { NuclearStrikeRenderer } from '../renderers/NuclearStrikeRenderer';
+import { MissilePadRenderer } from '../renderers/MissilePadRenderer';
+import { ICBMStrikeRenderer } from '../renderers/ICBMStrikeRenderer';
 import { AirBaseRenderer } from '../renderers/AirBaseRenderer';
 import { interceptionProfile } from '../data/airOperations';
 import { getNuclearCapability } from '../systems/ai/AIStrategicWeapons';
-import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
+import { STRATEGIC_WEAPONS, getStrategicWeaponProfile } from '../data/strategicWeapons';
+import { STRATEGIC_COMPONENTS, getStrategicComponentById } from '../data/strategicComponents';
+import { requiresMissilePad } from '../systems/MissileStorageSystem';
 import { historicalPopulation, cancelHistoricalTrade, cancelHistoricalBorders } from '../systems/HistoricalWorldEventAdapters';
 import { WORLD_EVENT_DEFINITIONS } from '../systems/HistoricalWorldEvents';
 import { ImpulsiveBullySystem } from '../systems/ai/ImpulsiveBullySystem';
@@ -1907,8 +1911,8 @@ export class GameScene extends Phaser.Scene {
     );
     aiDiplomacySystem.setDecisionRelationModifier((selfId, otherId, relation) => {
       const adjusted = unluckyWinnerTurningPointSystem.applyTemporaryRelationInfluence(selfId, otherId, relation);
-      const enemyNuclear = getNuclearCapability(otherId, unitManager, cityManager);
-      const ownNuclear = getNuclearCapability(selfId, unitManager, cityManager);
+      const enemyNuclear = getNuclearCapability(otherId, unitManager, cityManager, combatSystem.strategicWeapons.storage);
+      const ownNuclear = getNuclearCapability(selfId, unitManager, cityManager, combatSystem.strategicWeapons.storage);
       const caution = 1 - getLeaderPersonalityByNationId(selfId).warTolerance / 100;
       return { ...adjusted, fear: Math.min(100, adjusted.fear + (enemyNuclear.ready ? 15 + caution * 20 + (ownNuclear.ready ? 10 : 0) : 0)) };
     });
@@ -2049,6 +2053,7 @@ export class GameScene extends Phaser.Scene {
       });
     });
     const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
+    productionSystem.setStrategicComponentResourceAccessProvider((nationId, resourceId) => resourceAccessSystem.hasResource(nationId, resourceId));
     resourceAccessSystem.setForeignExploitationYieldPercentProvider((beneficiaryNationId, ownerNationId) => (
       diplomacyManager.hasExploitationRights(beneficiaryNationId, ownerNationId)
         ? policySystem.getPercentModifierTotal(beneficiaryNationId, 'foreignExploitationYieldPercent')
@@ -2632,6 +2637,7 @@ export class GameScene extends Phaser.Scene {
     });
     const buildTechnologyUnlockRow = (unlock: TechnologyUnlock): DiscoveryPopupRow => {
       switch (unlock.kind) {
+        case 'strategicComponent': return { label: getStrategicComponentById(unlock.id)?.name ?? unlock.id, imagePath: getProjectSpritePath(unlock.id), fallbackLabel: '☢' };
         case 'unit': {
           const unitType = getUnitTypeById(unlock.id);
           const label = unitType?.name ?? unlock.id;
@@ -3030,6 +3036,10 @@ export class GameScene extends Phaser.Scene {
       historicalTimeline.record({ type: 'worldCouncilMeeting', icon: '📜', text: message, eventNationIds: city ? [city.ownerId] : [] });
     });
     productionSystem.setItemProductionBlockReasonProvider((cityId, item) => {
+      if (item.kind === 'unit' && requiresMissilePad(item.unitType.id)) {
+        const owner = cityManager.getCity(cityId)?.ownerId;
+        return owner ? combatSystem.strategicWeapons.storage.productionBlockReason(owner) : 'City no longer exists';
+      }
       if (item.kind === 'unit' && item.unitType.id === 'surveyor'
         && nationManager.getNation(cityManager.getCity(cityId)?.ownerId ?? '')?.isHuman !== true) {
         return 'Surveyors are available only to human players';
@@ -3117,7 +3127,7 @@ export class GameScene extends Phaser.Scene {
       getResourceEconomicInterest: (nationId, resourceId) => resourceAccessSystem.getResourceEconomicInterest(nationId, resourceId),
       canAttack: (a, b) => diplomacyManager.canAttack(a, b),
       getEnergyPosition: energyPosition,
-      getNuclearPosition: nationId => ({ weapons: unitManager.getUnitsByOwner(nationId).filter(u => ['atomic_bomb', 'nuclear_missile'].includes(u.unitType.id)).length,
+      getNuclearPosition: nationId => ({ weapons: (nationManager.getNation(nationId)?.nuclearWarheads ?? 0) + unitManager.getUnitsByOwner(nationId).filter(u => ['atomic_bomb', 'nuclear_missile'].includes(u.unitType.id) || u.nuclearArmed).length,
         pursuing: researchSystem.isUnitUnlocked(nationId, 'atomic_bomb') || researchSystem.isUnitUnlocked(nationId, 'nuclear_missile') }),
       getPeacekeepingUnits: (nationId, hostId) => eligiblePeacekeepingUnits(nationId, hostId)
         .filter(u => !cityManager.getCityAt(u.tileX, u.tileY))
@@ -3304,6 +3314,9 @@ export class GameScene extends Phaser.Scene {
       (nationId, message) => logManager.info({ nationId, category: 'city', message }),
     );
     combatSystem.airOperations.setLogger((nationId,message) => logManager.info({ nationId, category: 'combat', message }));
+    combatSystem.strategicWeapons.setNationManager(nationManager);
+    aiMilitaryEvaluationSystem.setMissileStorageSystem(combatSystem.strategicWeapons.storage);
+    turnManager.on('turnStart', () => combatSystem.strategicWeapons.storage.reconcile());
     combatSystem.setCapitalCaptureResolver((city, defeatedNationId, victorNationId) =>
       militaryVassalizationSystem.vassalize({
         victorNationId,
@@ -3778,12 +3791,9 @@ export class GameScene extends Phaser.Scene {
             targets.add(`${transport.tileX},${transport.tileY}`);
           }
           if (weapon && weapon.landLaunch !== 'none') {
-            for (const city of cityManager.getCitiesByOwner(unit.ownerId)) {
-              if (!cityManager.getBuildings(city.id).hasActive('nuclear_silo')) continue;
-              const atSilo = unit.tileX === city.tileX && unit.tileY === city.tileY;
-              if (atSilo || pathfindingSystem.findPath(unit, city.tileX, city.tileY) !== null) {
-                targets.add(`${city.tileX},${city.tileY}`);
-              }
+            for (const pad of combatSystem.strategicWeapons.storage.getPads(unit.ownerId)) {
+              if (!pad.operational || combatSystem.strategicWeapons.storage.getStoredMissiles(pad.x, pad.y).length >= pad.capacity) continue;
+              if (pathfindingSystem.findPath(unit, pad.x, pad.y) !== null) targets.add(`${pad.x},${pad.y}`);
             }
           }
         }
@@ -5434,6 +5444,11 @@ export class GameScene extends Phaser.Scene {
           console.warn(`[GamesOfNations] Blocked Grand Stadium completion outside the valid hosting window in ${city.name}.`);
           return false;
         }
+        if (item.buildingType.id === 'nuclear_silo' && !buildingPlacementSystem.findReservedTile(city.id, item.buildingType.id, mapData)) {
+          // An old city-only silo queue may have loaded before a free site existed.
+          entry.placement = buildingPlacementSystem.reserveFirstValidPlacement(city, item.buildingType, mapData);
+          if (!entry.placement) { entry.blockedReason = 'Missile Launch Pad needs an empty owned land tile outside the city center'; return false; }
+        }
         const completedTile = item.buildingType.placement === 'city'
           ? null
           : buildingPlacementSystem.completePhysicalBuilding(city, item.buildingType, mapData);
@@ -5577,7 +5592,7 @@ export class GameScene extends Phaser.Scene {
 
       // Repeatable projects never complete, so this listener never fires for
       // them; guard anyway to narrow the union to units below.
-      if (item.kind === 'project') return;
+      if (item.kind === 'project' || item.kind === 'strategicComponent') return;
 
       const unitBlockReason = getCityUnitProductionBlockReason(
         city,
@@ -5593,7 +5608,9 @@ export class GameScene extends Phaser.Scene {
 
       const aircraftDestination = item.unitType.aircraftRole ? combatSystem.airOperations.productionDestination(city, item.aircraftBase) : undefined;
       if (item.unitType.aircraftRole && !aircraftDestination) return false;
-      const placement = aircraftDestination ?? (STRATEGIC_WEAPONS[item.unitType.id] ? { x: city.tileX, y: city.tileY } : this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem, mapData, cityManager));
+      const missilePad = requiresMissilePad(item.unitType.id) ? combatSystem.strategicWeapons.storage.findAvailablePad(city.ownerId) : undefined;
+      if (requiresMissilePad(item.unitType.id) && !missilePad) { entry.blockedReason = 'Requires a working Missile Launch Pad with a free missile slot'; return false; }
+      const placement = missilePad ?? aircraftDestination ?? (STRATEGIC_WEAPONS[item.unitType.id] ? { x: city.tileX, y: city.tileY } : this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem, mapData, cityManager));
       if (placement === null) return false;
 
       // Improvement-building units (Worker, Work Boat) only gain their full
@@ -5617,6 +5634,7 @@ export class GameScene extends Phaser.Scene {
       unitManager.createUnit({
         type: item.unitType,
         airBase: aircraftDestination?.base,
+        missileLaunchPad: missilePad ? { x: missilePad.x, y: missilePad.y } : undefined,
         ownerId: city.ownerId,
         tileX: placement.x,
         tileY: placement.y,
@@ -6697,7 +6715,11 @@ export class GameScene extends Phaser.Scene {
       event => event.kind === 'strike' && event.aircraft.ownerId === humanNationId
         && canShowCity(event.destination.x, event.destination.y));
     // Subscribe before terrain refresh: preserve the old terrain during missile flight.
+    new ICBMStrikeRenderer(this, tileMap, combatSystem.strategicWeapons, this.cameraController, worldInputGate,
+      () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile, event => event.nationId === humanNationId,
+      () => hudLayer?.resumeDeferredDialogs());
     new NuclearStrikeRenderer(this, tileMap, combatSystem.strategicWeapons, () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile);
+    new MissilePadRenderer(this, tileMap, combatSystem.strategicWeapons.storage, humanNationId);
     airBaseRenderer = new AirBaseRenderer(this, tileMap, combatSystem.airOperations, unitManager, cityManager, selectionManager, canSeeTile);
     combatSystem.strategicWeapons.onDetonation(event => {
       logManager.info({ nationId: event.nationId, category: 'combat', message: `[Strategic] ${JSON.stringify(event)}` });
@@ -6708,7 +6730,7 @@ export class GameScene extends Phaser.Scene {
         naturalResourceRenderer.refreshTile(tile.x, tile.y);
         tileBuildingRenderer.refreshTile(tile.x, tile.y);
       }
-      if (event.nuclear && !event.accident) {
+      if (event.nuclear && !event.accident && !event.intercepted) {
         for (const nation of nationManager.getAllNations()) if (nation.id !== event.nationId) diplomacyManager.recordWorldCouncilCondemnation(nation.id, event.nationId, 'Nuclear weapon use');
         historicalTimeline.record({ type: 'nuclearAttack', icon: '☢',
           text: `${timelineNationName(event.nationId)} detonated ${getUnitTypeById(event.weaponId)?.name ?? event.weaponId} at (${event.target.x}, ${event.target.y}); ${event.contaminatedTiles} tiles contaminated`,
@@ -8615,6 +8637,8 @@ export class GameScene extends Phaser.Scene {
         nationManager,
         gridSystem,
         isResourceVisible: isNaturalResourceVisibleToHuman,
+        missileStorage: combatSystem.strategicWeapons.storage,
+        viewerNationId: humanNationId,
       });
       if (info !== null) {
         tileInspectorDialog.open(info);
@@ -8771,6 +8795,7 @@ export class GameScene extends Phaser.Scene {
       policySystem,
       unitActionToolbox,
       worldInputGate,
+      isCinematicActive: () => this.cameraController.isCinematicActive,
       proposalContext: {
         getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
         getNationColor: (nationId) => nationManager.getNation(nationId)?.color ?? 0xb59a5a,
@@ -9139,27 +9164,6 @@ export class GameScene extends Phaser.Scene {
         eventNationIds: [a, b],
         metadata: { aggressorNationId: a, targetNationId: b },
       });
-    });
-    combatSystem.strategicWeapons.onDetonation(event => {
-      logManager.info({ nationId: event.nationId, category: 'combat', message: `[Strategic] ${JSON.stringify(event)}` });
-      for (const nation of nationManager.getAllNations()) resourceSystem.recalculateForNation(nation.id);
-      tileMap.rebuildTerrain();
-      for (const tile of gridSystem.getTilesInRange(event.target, event.radius ?? STRATEGIC_WEAPONS[event.weaponId].radius, mapData, { includeCenter: true })) {
-        tileImprovementOverlayRenderer.refreshTile(tile.x, tile.y);
-        naturalResourceRenderer.refreshTile(tile.x, tile.y);
-        tileBuildingRenderer.refreshTile(tile.x, tile.y);
-      }
-      if (event.nuclear && !event.accident) {
-        for (const nation of nationManager.getAllNations()) if (nation.id !== event.nationId) diplomacyManager.recordWorldCouncilCondemnation(nation.id, event.nationId, 'Nuclear weapon use');
-        historicalTimeline.record({ type: 'nuclearAttack', icon: '☢',
-          text: `${timelineNationName(event.nationId)} detonated ${getUnitTypeById(event.weaponId)?.name ?? event.weaponId} at (${event.target.x}, ${event.target.y}); ${event.contaminatedTiles} tiles contaminated`,
-          eventNationIds: [event.nationId, ...event.victimNationIds], metadata: { aggressorNationId: event.nationId, targetNationId: event.victimNationIds[0] } });
-        for (const victim of event.victimNationIds) worldCouncilSystem.triggerEmergencyMeeting(turnManager.getCurrentRound(), {
-          eventType: 'nuclearAttack', aggressorNationId: event.nationId, targetNationId: victim,
-        });
-      }
-      hudLayer?.refresh();
-      rightPanel?.requestRefresh();
     });
     diplomacyManager.onWarDeclared((aggressorId, targetId, metadata) => {
       if (metadata.source !== 'vassalObligation' && metadata.source !== 'nuclearResponse') {
@@ -9805,7 +9809,7 @@ export class GameScene extends Phaser.Scene {
         });
     };
     const getCityViewUnitOptions = (city: City): CityViewUnitOption[] => (
-      ALL_UNIT_TYPES
+      [...ALL_UNIT_TYPES
         .filter((unitType) => researchSystem.isUnitUnlocked(city.ownerId, unitType.id))
         .filter((unitType) => !(
           isMilitaryProductionUnit(unitType)
@@ -9835,7 +9839,13 @@ export class GameScene extends Phaser.Scene {
             disabled: reason !== undefined,
             reason,
           }];
-        })
+        }),
+        ...STRATEGIC_COMPONENTS.filter(componentType => nationManager.getNation(city.ownerId)?.researchedTechIds.includes(componentType.requiredTechId))
+          .map(componentType => {
+            const item: Producible = { kind: 'strategicComponent', componentType };
+            const reason = productionSystem.getItemProductionBlockReason(city.id, item);
+            return { id: componentType.id, name: componentType.name, description: componentType.description, cost: productionSystem.getCost(item, city.id), disabled: !!reason, reason };
+          })]
     );
     const getCityViewWonderOptions = (city: City): CityViewWonderOption[] => {
       const isQueuedHere = (wonderId: string): boolean => productionSystem.getQueue(city.id)
@@ -10007,6 +10017,9 @@ export class GameScene extends Phaser.Scene {
       };
     };
     rightPanel.setAircraftProductionRequestHandler(startAircraftProductionSelection);
+    rightPanel.setMissileStorage(combatSystem.strategicWeapons.storage,
+      unit => { selectionManager.selectUnit(unit); rightPanel?.showUnit(unit); },
+      () => !isAutoplayActive() && turnManager.getCurrentNation().id === humanNationId);
     rightPanel.setBuildingPlacementRequestHandler((city, buildingId) => {
       if (aircraftProductionSelection) cancelAircraftProductionSelection();
       if (city.ownerId !== humanNationId) {
@@ -10306,6 +10319,11 @@ export class GameScene extends Phaser.Scene {
     cityView.onUnitRequested((unitId) => {
       const city = getOpenCityViewCity();
       if (!city) return;
+      const componentType = getStrategicComponentById(unitId);
+      if (componentType) {
+        productionSystem.enqueue(city.id, { kind: 'strategicComponent', componentType });
+        rightPanel?.requestRefresh(); refreshOpenCityView(); cityView.switchToQueueMode(); return;
+      }
       const unitType = ALL_UNIT_TYPES.find((candidate) => candidate.id === unitId);
       if (!unitType) return;
       if (productionSystem.getItemProductionBlockReason(city.id, { kind: 'unit', unitType })) return;
@@ -10836,7 +10854,8 @@ export class GameScene extends Phaser.Scene {
       if (STRATEGIC_WEAPONS[unit.unitType.id]) {
         const carrier = unitManager.getTransportForUnit(unit);
         const range = unit.unitType.id === 'atomic_bomb' ? carrier?.unitType.range ?? 0 : unit.unitType.range ?? 0;
-        return new Set(gridSystem.getTilesInRange({ x: unit.tileX, y: unit.tileY }, range, mapData).map(tile => `${tile.x},${tile.y}`));
+        const targets = STRATEGIC_WEAPONS[unit.unitType.id].globalRange ? mapData.tiles.flat() : gridSystem.getTilesInRange({ x: unit.tileX, y: unit.tileY }, range, mapData);
+        return new Set(targets.map(tile => `${tile.x},${tile.y}`));
       }
       const range = combatSystem.getEffectiveAttackRange(unit);
       if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return new Set();
@@ -11988,14 +12007,14 @@ export class GameScene extends Phaser.Scene {
           { x: selected.unit.tileX, y: selected.unit.tileY },
           hoverTile,
         );
-        const weapon = STRATEGIC_WEAPONS[selected.unit.unitType.id];
+        const weapon = getStrategicWeaponProfile(selected.unit);
         if (weapon) rangedPreviewRenderer.showArea(gridSystem.getTilesInRange(hoverTile, weapon.radius, mapData, { includeCenter: true }));
         return;
       }
 
       rangedPreviewRenderer.clearCurve();
 
-      if (selected.unit.carriedByUnitId !== undefined) {
+      if (selected.unit.carriedByUnitId !== undefined || selected.unit.missileLaunchPad) {
         pathPreviewRenderer.clearPath();
         return;
       }
@@ -12317,6 +12336,7 @@ export class GameScene extends Phaser.Scene {
         peaceSummitSystem,
       });
       resourceAccessSystem.invalidateResourceIndex();
+      combatSystem.strategicWeapons.storage.reconcile();
       powerPlantSystem.refreshAllocation(false);
       peaceTreatyUnitRelocationSystem.recoverStrandedUnits(turnManager.getCurrentRound());
       updateFog();
@@ -13224,6 +13244,8 @@ function getProducibleName(item: Producible): string {
       return item.corporationType.name;
     case 'manufacturedResource':
       return item.productionType.name;
+    case 'strategicComponent':
+      return item.componentType.name;
     case 'project':
       return item.projectType.name;
     case 'tradeRoute':
@@ -13243,6 +13265,8 @@ function getProducibleSpritePath(item: Producible): string | undefined {
       return getCorporationSpritePath(item.corporationType.id);
     case 'manufacturedResource':
       return getCorporationSpritePath(AEROSPACE_PARTS_ID);
+    case 'strategicComponent':
+      return getProjectSpritePath(item.componentType.id);
     case 'project':
       return getProjectSpritePath(item.projectType.id);
     case 'tradeRoute':

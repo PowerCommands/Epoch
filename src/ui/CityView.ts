@@ -71,6 +71,7 @@ export interface CityViewUnitOption {
   cost: number;
   disabled?: boolean;
   reason?: string;
+  description?: string;
 }
 
 export interface CityViewWonderOption {
@@ -734,9 +735,9 @@ export class CityView {
     corporationOptions: CityViewCorporationOption[],
     projectOptions: CityViewProjectOption[],
   ): void {
-    const units = this.renderProductionAccordion('units', 'Units', unitOptions, (grid, option) => {
+    const units = this.renderProductionAccordion('units', 'Units & Strategic Weapons', unitOptions, (grid, option) => {
       const button = this.createProductionButton(
-        getUnitSpritePath(option.id),
+        option.id === 'nuclear_warhead' ? getProjectSpritePath(option.id) : getUnitSpritePath(option.id),
         option.name, `${option.cost} production`, option.reason,
       );
       const disabled = option.disabled ?? false;
@@ -744,7 +745,7 @@ export class CityView {
       button.setAttribute('aria-disabled', String(disabled));
       const unit = getUnitTypeById(option.id);
       this.attachProductionTooltip(button, [
-        option.name, unit?.description, `${option.cost} production`,
+        option.name, option.description ?? unit?.description, `${option.cost} production`,
         unit ? `Strength: ${unit.baseStrength} • Movement: ${unit.movementPoints}` : undefined,
         unit?.rangedStrength ? `Ranged strength: ${unit.rangedStrength} • Range: ${unit.range ?? 0}` : undefined,
         unit ? `Upkeep: ${unit.upkeepGold ?? 0} Gold / turn` : undefined,

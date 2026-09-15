@@ -66,9 +66,9 @@ test('atomic delivery requires real bomber cargo, consumes bomb and platform act
   assert.equal(h.system.launch(bomb, 10, 10), false);
 });
 
-test('nuclear missile requires an owned working silo; storage and damage disable launch', () => {
+test('nuclear missile requires an owned working Missile Launch Pad; storage and damage disable launch', () => {
   const h = harness(); h.city(); const base = h.city('a', 2, 10); const missile = h.unit(NUCLEAR_MISSILE);
-  assert.match(h.system.getLaunchFailure(missile, 10, 10)!, /Nuclear Silo/);
+  assert.match(h.system.getLaunchFailure(missile, 10, 10)!, /Missile Launch Pad/);
   h.cities.getBuildings(base.id).add(NUCLEAR_SILO);
   assert.equal(h.system.getLaunchFailure(missile, 10, 10), undefined);
   h.cities.getBuildings(base.id).setBroken('nuclear_silo', true);

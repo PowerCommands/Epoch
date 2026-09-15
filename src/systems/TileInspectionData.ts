@@ -10,6 +10,7 @@ import type { CityManager } from './CityManager';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { NationManager } from './NationManager';
 import type { UnitManager } from './UnitManager';
+import type { MissileStorageSystem } from './MissileStorageSystem';
 
 /** A single label/value line inside an inspection section. */
 export interface TileInspectionRow {
@@ -51,6 +52,8 @@ export interface TileInspectionDeps {
   nationManager: NationManager;
   gridSystem: IGridSystem;
   isResourceVisible?: (resourceId: string) => boolean;
+  missileStorage?: MissileStorageSystem;
+  viewerNationId?: string;
 }
 
 function terrainLabel(type: string): string {
@@ -90,6 +93,20 @@ export function buildTileInspection(
   if (!tile) return null;
 
   const sections: TileInspectionSection[] = [];
+  const pad = deps.missileStorage?.getPadAt(x, y);
+  if (pad) {
+    const rows: TileInspectionRow[] = [
+      { label: 'Status', value: pad.operational ? 'Operational' : 'Broken — repair to launch' },
+      { label: 'Missile Capacity', value: String(pad.capacity) },
+    ];
+    if (deps.viewerNationId === pad.ownerId) {
+      const missiles = deps.missileStorage!.getStoredMissiles(x, y);
+      rows.push({ label: 'Occupied slots', value: String(missiles.length) });
+      for (const [index, missile] of missiles.entries()) rows.push({ label: `Missile ${index + 1}`, value: missile.unitType.id === 'icbm'
+        ? `ICBM — ${missile.nuclearArmed ? 'Nuclear armed' : 'Conventional'}` : missile.unitType.name });
+    } else rows.push({ label: 'Arsenal', value: 'Classified' });
+    sections.push({ heading: 'Missile Launch Pad', rows });
+  }
 
   // ── Tile ──────────────────────────────────────────────────────────────────
   const tileRows: TileInspectionRow[] = [{ label: 'Terrain', value: terrainLabel(tile.type) }];

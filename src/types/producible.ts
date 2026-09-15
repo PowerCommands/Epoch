@@ -5,6 +5,7 @@ import type { WonderType } from '../entities/Wonder';
 import type { CorporationDefinition } from '../data/corporations';
 import type { ManufacturedResourceProductionDefinition } from '../data/scienceVictory';
 import type { ProjectDefinition } from '../data/projects';
+import type { StrategicComponentDefinition } from '../data/strategicComponents';
 
 /**
  * Discriminated union för saker en stad kan producera.
@@ -16,5 +17,6 @@ export type Producible =
   | { kind: 'wonder'; wonderType: WonderType }
   | { kind: 'corporation'; corporationType: CorporationDefinition }
   | { kind: 'manufacturedResource'; productionType: ManufacturedResourceProductionDefinition }
+  | { kind: 'strategicComponent'; componentType: StrategicComponentDefinition }
   | { kind: 'project'; projectType: ProjectDefinition }
   | { kind: 'tradeRoute'; connectionId: string; fromCityId: string; toCityId: string; targetNationId: string; displayName: string; establishmentTurns: number };

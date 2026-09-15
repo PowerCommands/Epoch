@@ -4,6 +4,7 @@ import type { WorldCouncilSystem } from './WorldCouncilSystem';
 
 export function getCouncilProductionBlockReason(council: WorldCouncilSystem, nationId: string, item: Producible): string | undefined {
   return item.kind === 'unit' ? council.getUnitProductionRestrictionReason(nationId, item.unitType.id)
+    : item.kind === 'strategicComponent' ? council.getStrategicComponentProductionRestrictionReason(nationId, item.componentType.id)
     : item.kind === 'building' ? council.getBuildingProductionRestrictionReason(nationId, item.buildingType.id) : undefined;
 }
 

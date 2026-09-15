@@ -3,7 +3,8 @@ import { getUrbanInfrastructureCandidates } from './ai/AIUrbanDevelopment';
 import { nuclearPlantMaintenancePriority } from '../data/nuclearPlants';
 import { planAirProduction } from './ai/AIAirProduction';
 import { runStrategicWeaponsAI, getNuclearCapability } from './ai/AIStrategicWeapons';
-import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
+import { STRATEGIC_WEAPONS, MISSILE_LAUNCH_PAD_ID, PATRIOT_MISSILE_BATTERY_ID, PATRIOT_INTERCEPTION_GOLD_COST } from '../data/strategicWeapons';
+import { NUCLEAR_WARHEAD } from '../data/strategicComponents';
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
@@ -606,6 +607,7 @@ function describeProducible(item: Producible): string {
     case 'corporation': return `corporation:${item.corporationType.name}`;
     case 'manufacturedResource': return `manufacturedResource:${item.productionType.name}`;
     case 'project': return `project:${item.projectType.name}`;
+    case 'strategicComponent': return `strategicComponent:${item.componentType.name}`;
     case 'tradeRoute': return `tradeRoute:${item.displayName}`;
   }
 }
@@ -7275,7 +7277,8 @@ export class AISystem {
     const strategicStock = this.unitManager.getUnitsByOwner(nationId);
     const strategicQueued = this.cityManager.getCitiesByOwner(nationId).flatMap(c => this.productionSystem.getQueue(c.id));
     const countStrategic = (id: string) => strategicStock.filter(u => u.unitType.id === id).length + strategicQueued.filter(e => e.item.kind === 'unit' && e.item.unitType.id === id).length;
-    const hasNuclearEnemy = this.nationManager.getAllNations().some(n => n.id !== nationId && (this.discoverySystem?.hasMet(nationId, n.id) ?? true) && getNuclearCapability(n.id, this.unitManager, this.cityManager).stockpile > 0);
+    const missileStorage = this.combatSystem.strategicWeapons.storage;
+    const hasNuclearEnemy = this.nationManager.getAllNations().some(n => n.id !== nationId && (this.discoverySystem?.hasMet(nationId, n.id) ?? true) && getNuclearCapability(n.id, this.unitManager, this.cityManager, missileStorage).stockpile > 0);
     const addStrategicUnit = (id: string, desired: number, score: number) => {
       const type = getUnitTypeById(id);
       if (!type || countStrategic(id) >= desired || !this.canBuildUnit(nationId, id) || !canCityProduceUnit(city, type, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())) return;
@@ -7284,7 +7287,7 @@ export class AISystem {
     };
     const addStrategicBuilding = (id: string, score: number) => {
       const type = getBuildingById(id);
-      if (type && !buildings.has(id) && this.canBuildBuilding(nationId, id) && !this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'building', buildingType: type }))
+      if (type && (!buildings.has(id) || type.repeatable) && this.canCityBuildBuilding(city, nationId, type, true) && !this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'building', buildingType: type }))
         candidates.push({ item: { kind: 'building', buildingType: type }, baseScore: score, category: 'productionBuilding' });
     };
     if (goldPerTurn >= 0 && canBuildGeneralMilitary && !consolidationSuppression) {
@@ -7303,16 +7306,48 @@ export class AISystem {
     }
     if (goldPerTurn >= 0) {
       if (hasNuclearEnemy) addStrategicBuilding('bomb_shelter', 95);
-      if (!this.cityManager.getCitiesByOwner(nationId).some(c => this.cityManager.getBuildings(c.id).hasActive('nuclear_silo'))) addStrategicBuilding('nuclear_silo', 75);
-      if (this.canBuildUnit(nationId, 'atomic_bomb')) {
+    }
+    const atWar = this.diplomacyManager?.isAtWarWithAnyNation(nationId) ?? false;
+    const strategicInterest = hasNuclearEnemy || getLeaderPersonalityByNationId(nationId).aggressionBias > 0
+      || strategy.production.militaryWeight >= 1.15;
+    const strongEconomy = goldPerTurn >= 15 && resources.gold >= 1500 && economy.production >= 20;
+    const strategicBudget = strongEconomy && strategicInterest && canBuildGeneralMilitary && !consolidationSuppression;
+    const pads = missileStorage.getPads(nationId);
+    const queuedPads = strategicQueued.filter(e => e.item.kind === 'building' && e.item.buildingType.id === MISSILE_LAUNCH_PAD_ID).length;
+    const queuedMissiles = strategicQueued.filter(e => e.item.kind === 'unit' && ['icbm', 'nuclear_missile'].includes(e.item.unitType.id)).length;
+    const freeSlots = pads.filter(p => p.operational).reduce((sum, p) => sum + Math.max(0, p.capacity - missileStorage.getStoredMissiles(p.x, p.y).length), 0) - queuedMissiles;
+    if (strategicBudget) {
+      const desiredICBMs = atWar ? 3 : 2;
+      const desiredPads = cityCount >= 6 && atWar ? 2 : 1;
+      if (pads.length + queuedPads < desiredPads && (this.canBuildUnit(nationId, 'icbm') || this.canBuildUnit(nationId, 'nuclear_missile')))
+        addStrategicBuilding(MISSILE_LAUNCH_PAD_ID, pads.length ? 75 : 100);
+      if (freeSlots > 0) addStrategicUnit('icbm', desiredICBMs, atWar ? 115 : 85);
+      const expensiveNuclearBudget = resources.gold >= 3000 && goldPerTurn >= 30 && economy.production >= 35;
+      if (expensiveNuclearBudget && this.canBuildUnit(nationId, 'atomic_bomb')) {
         if (!strategicStock.some(u => ['bomber', 'stealth_bomber'].includes(u.unitType.id))) addStrategicUnit(this.canBuildUnit(nationId, 'stealth_bomber') ? 'stealth_bomber' : 'bomber', 1, 85);
         else addStrategicUnit('atomic_bomb', 1, hasNuclearEnemy ? 110 : 80);
       }
-      if (this.canBuildUnit(nationId, 'nuclear_missile')) {
+      if (expensiveNuclearBudget && this.canBuildUnit(nationId, 'nuclear_missile')) {
         addStrategicUnit('nuclear_submarine', 1, 90);
-        if (buildings.hasActive('nuclear_silo') || strategicStock.some(u => u.unitType.id === 'nuclear_submarine')) addStrategicUnit('nuclear_missile', 2, hasNuclearEnemy ? 115 : 85);
+        if (freeSlots > 0) addStrategicUnit('nuclear_missile', 2, hasNuclearEnemy ? 115 : 85);
       }
-      if (this.diplomacyManager?.isAtWarWithAnyNation(nationId)) addStrategicUnit('guided_missile', 3, 95);
+      const armedICBMs = strategicStock.filter(u => u.unitType.id === 'icbm' && u.nuclearArmed).length;
+      const warheads = (this.nationManager.getNation(nationId)?.nuclearWarheads ?? 0)
+        + strategicQueued.filter(e => e.item.kind === 'strategicComponent' && e.item.componentType.id === NUCLEAR_WARHEAD.id).length;
+      const warheadItem: Producible = { kind: 'strategicComponent', componentType: NUCLEAR_WARHEAD };
+      if (expensiveNuclearBudget && countStrategic('icbm') > armedICBMs && warheads + armedICBMs < (hasNuclearEnemy ? 2 : 1)
+        && !this.productionSystem.getItemProductionBlockReason(city.id, warheadItem)) {
+        candidates.push({ item: warheadItem, baseScore: hasNuclearEnemy ? 110 : 80, category: 'military' });
+      }
+      if (atWar) addStrategicUnit('guided_missile', 3, 95);
+    }
+    // Protect the capital and major production centers only when the treasury can fund a salvo.
+    const strategicThreat = hasNuclearEnemy || this.unitManager.getAllUnits().some(u => u.ownerId !== nationId && u.unitType.id === 'icbm'
+      && (this.discoverySystem?.hasMet(nationId, u.ownerId) ?? true));
+    const importantStrategicCity = city.isResidenceCapital || economy.production >= 50;
+    if (strategicThreat && importantStrategicCity && resources.gold >= PATRIOT_INTERCEPTION_GOLD_COST * 2 && goldPerTurn >= 30
+      && !consolidationSuppression && !this.hasPlacedOrReservedBuilding(city, PATRIOT_MISSILE_BATTERY_ID)) {
+      addStrategicBuilding(PATRIOT_MISSILE_BATTERY_ID, hasNuclearEnemy ? 125 : 100);
     }
 
     const powerPlantPlan = this.powerPlantPlans.get(city.id);
@@ -8320,6 +8355,8 @@ export class AISystem {
         return `manufacturedResource:${item.productionType.name}`;
       case 'project':
         return `project:${item.projectType.name}`;
+      case 'strategicComponent':
+        return `strategicComponent:${item.componentType.name}`;
       case 'tradeRoute':
         return `tradeRoute:${item.displayName}`;
     }
@@ -9087,7 +9124,10 @@ export class AISystem {
     this.logScienceVictoryAI(nationId, message);
   }
 
-  private canCityBuildBuilding(city: City, nationId: string, building: BuildingType): boolean {
+  private canCityBuildBuilding(city: City, nationId: string, building: BuildingType, strategicPurpose = false): boolean {
+    // Repeatable military installations belong to the bounded arsenal plan;
+    // generic infrastructure fallbacks must not fill every empty tile with them.
+    if (!strategicPurpose && [MISSILE_LAUNCH_PAD_ID, PATRIOT_MISSILE_BATTERY_ID].includes(building.id)) return false;
     if (!this.canBuildBuilding(nationId, building.id)) return false;
     // Capacity planning also uses this gate. Ordinary buildings only contribute
     // once, including when a broken copy still exists and needs repair.
@@ -9354,6 +9394,7 @@ export class AISystem {
     if (item.kind === 'manufacturedResource') return 'science victory';
     if (item.kind === 'tradeRoute') return 'infrastructure';
     if (item.kind === 'project') return 'consolidation';
+    if (item.kind === 'strategicComponent') return 'nuclear deterrence';
     const bt = item.buildingType;
     if ((bt.modifiers.happinessPerTurn ?? 0) > 0) return 'low happiness';
     if (bt.id === GRANARY.id) return 'city growth';
@@ -9371,6 +9412,7 @@ export class AISystem {
     if (item.kind === 'manufacturedResource') return item.productionType.name;
     if (item.kind === 'tradeRoute') return item.displayName;
     if (item.kind === 'project') return item.projectType.name;
+    if (item.kind === 'strategicComponent') return item.componentType.name;
     return item.buildingType.name;
   }
 

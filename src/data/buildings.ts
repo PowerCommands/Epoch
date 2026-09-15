@@ -2,6 +2,7 @@ import type { BuildingModifiers, BuildingPlacement, BuildingResourceCapacityBonu
 import type { Era } from './technologies';
 import { CITY_POPULATION_CAPACITY_BONUSES } from './populationCapacity';
 import { TileType } from '../types/map';
+import { MISSILE_LAUNCH_PAD_ID, MISSILE_LAUNCH_PAD_CAPACITY, PATRIOT_MISSILE_BATTERY_ID, PATRIOT_DEFENSE_RADIUS, PATRIOT_INTERCEPTION_GOLD_COST } from './strategicWeapons';
 
 interface BuildingInput {
   id: string;
@@ -200,7 +201,10 @@ export const BOMB_SHELTER = building({ id: 'bomb_shelter', name: 'Bomb Shelter',
 export const POLICE_STATION = building({ id: 'police_station', name: 'Police Station', era: 'modern', cost: 300, maintenance: 2, description: 'Order brings peace and happiness to the people' , modifiers: { happinessPerTurn: 5 }});
 export const SPACESHIP_FACTORY = building({ id: 'spaceship_factory', name: 'Spaceship Factory', era: 'information', cost: 360, maintenance: 3, modifiers: { productionPercent: 10, happinessPerTurn: 5 }, description: 'Spaceship-part production approximated as +10% production' });
 
-export const NUCLEAR_SILO = building({ id: 'nuclear_silo', placement: 'city', name: 'Nuclear Silo', era: 'information', cost: 450, maintenance: 8, description: 'Land launch base for Nuclear Missiles stationed on this city tile. Must be working to launch. Missiles consume Uranium and obey the Non-Proliferation Treaty.', modifiers: {} });
+export const MISSILE_LAUNCH_PAD = building({ id: MISSILE_LAUNCH_PAD_ID, placement: 'land', repeatable: true, requiresEmptyTile: true, name: 'Missile Launch Pad', era: 'atomic', cost: 450, maintenance: 8, description: `Missile Capacity: ${MISSILE_LAUNCH_PAD_CAPACITY}. Stores Nuclear Missiles and conventional or nuclear-armed ICBMs. Broken pads retain their missiles but cannot launch. Missile strikes destroy all stored missiles.`, modifiers: {} });
+/** Compatibility export: the player-facing building is Missile Launch Pad. */
+export const NUCLEAR_SILO = MISSILE_LAUNCH_PAD;
+export const PATRIOT_MISSILE_BATTERY = building({ id: PATRIOT_MISSILE_BATTERY_ID, placement: 'land', repeatable: true, requiresEmptyTile: true, name: 'Patriot Missile Battery', era: 'information', cost: 900, maintenance: 4, description: `Defends against Guided Missiles, Nuclear Missiles and ICBMs within ${PATRIOT_DEFENSE_RADIUS} tiles. Each interception attempt has an 80% chance and costs ${PATRIOT_INTERCEPTION_GOLD_COST.toLocaleString('en-US')} Gold, even on failure. Broken or unaffordable batteries cannot fire.`, modifiers: {} });
 
 export const AIRPORT = building({ id: 'airport', name: 'Airport', era: 'modern', placement: 'land', cost: 500, maintenance: 4, aircraftCapacity: 4, description: 'Major civilian airport. Aircraft Capacity: 4. Fulfills the Airport OR Container Port requirement for Metropolis.' });
 export const AIRFIELD = building({ id: 'airfield', name: 'Airfield', era: 'industrial', placement: 'land', cost: 250, maintenance: 3, aircraftCapacity: 2, description: 'Aircraft Capacity: 2. Bases aircraft for missions and interception.' });
@@ -215,7 +219,7 @@ export const ALL_BUILDINGS: BuildingType[] = [
   OPERA_HOUSE, BANK, MUSEUM, PUBLIC_SCHOOL, SEAPORT, WINDMILL, ZOO,
   MILITARY_ACADEMY, ARSENAL, FACTORY, RAILWAY_STATION, CONTAINER_PORT, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,
   BROADCAST_TOWER, STADIUM, MILITARY_BASE, MEDICAL_LAB,
-  RESEARCH_LAB, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, NUCLEAR_SILO, POLICE_STATION, SPACESHIP_FACTORY,
+  RESEARCH_LAB, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, MISSILE_LAUNCH_PAD, PATRIOT_MISSILE_BATTERY, POLICE_STATION, SPACESHIP_FACTORY,
 ];
 
 /**

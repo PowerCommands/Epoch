@@ -31,13 +31,13 @@ export interface UnitActionViewState {
 export const ACTIONS: readonly UnitActionDefinition[] = [
   { mode: 'claimTerritory', label: 'Claim Territory', isAvailable: unit => unit.unitType.id === 'surveyor' },
   { mode: 'rebase', label: 'Rebase', isAvailable: unit => !!unit.unitType.aircraftRole && unit.movementPoints > 0 },
-  { mode: 'loadWeapon', label: 'Load Weapon', isAvailable: unit => !!STRATEGIC_WEAPONS[unit.unitType.id] && !unit.carriedByUnitId },
+  { mode: 'loadWeapon', label: 'Load Weapon', isAvailable: unit => !!STRATEGIC_WEAPONS[unit.unitType.id]?.carrierIds.length && !unit.carriedByUnitId },
   { mode: 'nuclearPayload', label: 'Select Nuclear Payload', isAvailable: unit => unit.unitType.allowedCargoUnitIds?.some(id => STRATEGIC_WEAPONS[id]?.nuclear) === true && unit.cargoUnitIds.length > 0 },
   { mode: 'payload', label: 'Select Conventional Payload', isAvailable: unit => unit.unitType.allowedCargoUnitIds?.some(id => STRATEGIC_WEAPONS[id]?.nuclear === false) === true && unit.cargoUnitIds.length > 0 },
   {
     mode: 'move',
     label: 'Move',
-    isAvailable: unit => !unit.unitType.aircraftRole,
+    isAvailable: unit => !unit.unitType.aircraftRole && !unit.missileLaunchPad && unit.unitType.id !== 'icbm',
   },
   {
     mode: 'explore',

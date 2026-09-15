@@ -50,6 +50,8 @@ interface HudLayerConfig {
   policySystem: PolicySystem;
   unitActionToolbox: UnitActionToolbox;
   worldInputGate: WorldInputGate;
+  /** Queue notifications while the strategic camera is presenting a resolved strike. */
+  isCinematicActive?: () => boolean;
   proposalContext: ProposalDialogContext;
   onEndTurn: () => void;
   getIdleCityIds: () => string[];
@@ -444,6 +446,11 @@ export class HudLayer {
     this.scheduler.schedule('refresh', () => this.refreshNow());
   }
 
+  resumeDeferredDialogs(): void {
+    this.refresh();
+    this.showNextQueuedModal();
+  }
+
   /**
    * Show or queue a proposal addressed to the human. The dialog enforces
    * FIFO order: when one is already on screen, later arrivals wait.
@@ -479,7 +486,8 @@ export class HudLayer {
   }
 
   hasBlockingModal(): boolean {
-    return this.gamesOfNationsHud.isDialogOpen()
+    return this.config.isCinematicActive?.() === true
+      || this.gamesOfNationsHud.isDialogOpen()
       || this.discoveryPopup.isShowing()
       || this.proposalDialog.isShowing()
       || this.worldCouncilDialog.isShowing()

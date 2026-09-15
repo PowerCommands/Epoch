@@ -1,6 +1,9 @@
 import { getBuildingById } from '../data/buildings';
 import { NUCLEAR_PLANT_MELTDOWN_RADIUS } from '../data/nuclearPlants';
-import { STRATEGIC_WEAPONS, NUCLEAR_SHELTER_DAMAGE_MULTIPLIER, type AreaWeaponDefinition } from '../data/strategicWeapons';
+import { STRATEGIC_WEAPONS, getStrategicWeaponProfile, INTERCEPTABLE_MISSILE_IDS, PATRIOT_MISSILE_BATTERY_ID, PATRIOT_DEFENSE_RADIUS, PATRIOT_INTERCEPTION_CHANCE, PATRIOT_INTERCEPTION_GOLD_COST, NUCLEAR_SHELTER_DAMAGE_MULTIPLIER, type AreaWeaponDefinition } from '../data/strategicWeapons';
+import { airMissionRoll } from '../data/airOperations';
+import { MissileStorageSystem } from './MissileStorageSystem';
+import type { NationManager } from './NationManager';
 import type { Unit } from '../entities/Unit';
 import { TileType, type MapData, type Tile } from '../types/map';
 import type { UnitManager } from './UnitManager';
@@ -9,6 +12,8 @@ import type { IGridSystem } from './grid/IGridSystem';
 import type { DiplomacyManager } from './DiplomacyManager';
 
 export interface StrategicDetonation {
+  intercepted?: boolean;
+  interceptions?: { battery: { x: number; y: number }; nationId: string; success: boolean }[];
   /** Presentation-only launch coordinates, copied before ordnance/cargo removal. */
   origin?: { x: number; y: number };
   accident?: boolean;
@@ -43,10 +48,18 @@ export function getBlastTiles(map: MapData, grid: IGridSystem, x: number, y: num
 }
 
 export class StrategicWeaponsSystem {
+  readonly storage: MissileStorageSystem;
+  private nations?: NationManager;
   private listeners: ((event: StrategicDetonation) => void)[] = [];
   constructor(private readonly units: UnitManager, private readonly cities: CityManager,
     private readonly map: MapData, private readonly grid: IGridSystem,
-    private readonly diplomacy?: DiplomacyManager, private readonly getRound: () => number = () => 1) {}
+    private readonly diplomacy?: DiplomacyManager, private readonly getRound: () => number = () => 1,
+    nations?: NationManager) {
+    this.nations = nations;
+    this.storage = new MissileStorageSystem(units, cities, map, nations);
+  }
+
+  setNationManager(nations: NationManager): void { this.nations = nations; this.storage.setNationManager(nations); }
 
   onDetonation(listener: (event: StrategicDetonation) => void): () => void {
     this.listeners.push(listener);
@@ -54,30 +67,32 @@ export class StrategicWeaponsSystem {
   }
 
   getLaunchFailure(weapon: Unit, x: number, y: number): string | undefined {
-    const config = STRATEGIC_WEAPONS[weapon.unitType.id];
+    const config = getStrategicWeaponProfile(weapon);
     if (!config) return 'Not strategic ordnance';
     if (this.units.getUnit(weapon.id) !== weapon || !weapon.isAlive()) return 'Weapon no longer exists';
     if (weapon.movementPoints <= 0) return 'Weapon has no actions remaining';
     const carrier = this.units.getTransportForUnit(weapon);
     if (weapon.carriedByUnitId) {
       if (!carrier?.isAlive() || carrier.ownerId !== weapon.ownerId || !carrier.cargoUnitIds.includes(weapon.id)
-        || !config.carrierIds.includes(carrier.unitType.id)) return 'Invalid delivery platform';
+        || !STRATEGIC_WEAPONS[weapon.unitType.id].carrierIds.includes(carrier.unitType.id)) return 'Invalid delivery platform';
       if (carrier.movementPoints <= 0) return 'Delivery platform has no actions remaining';
     } else {
       if (config.landLaunch === 'none') return 'Load this Atomic Bomb aboard a Bomber or Stealth Bomber';
       const tile = this.map.tiles[weapon.tileY]?.[weapon.tileX];
       if (!tile || [TileType.Coast, TileType.Ocean].includes(tile.type)) return 'Requires land or Nuclear Submarine cargo';
       if (config.landLaunch === 'silo') {
-        const city = this.cities.getCityAt(weapon.tileX, weapon.tileY);
-        if (!city || city.ownerId !== weapon.ownerId || !this.cities.getBuildings(city.id).hasActive('nuclear_silo')) {
-          return 'Station this missile on an owned city with a working Nuclear Silo, or load a Nuclear Submarine';
+        const pad = this.storage.getPadAt(weapon.tileX, weapon.tileY);
+        if (!pad?.operational || pad.ownerId !== weapon.ownerId
+          || (weapon.missileLaunchPad && (weapon.missileLaunchPad.x !== pad.x || weapon.missileLaunchPad.y !== pad.y))) {
+          return 'Requires an owned working Missile Launch Pad' + (weapon.unitType.id === 'nuclear_missile' ? ', or Nuclear Submarine cargo' : '');
         }
+        if (!weapon.missileLaunchPad && this.storage.getStoredMissiles(pad.x, pad.y).length > pad.capacity) return 'Missile Launch Pad is full';
       }
     }
     const origin = carrier ?? weapon;
     const distance = this.grid.getDistance({ x: origin.tileX, y: origin.tileY }, { x, y });
     const range = weapon.unitType.id === 'atomic_bomb' ? carrier?.unitType.range ?? 0 : weapon.unitType.range ?? 0;
-    if (!this.map.tiles[y]?.[x] || distance < 1 || distance > range) return `Target must be within launch range ${range}`;
+    if (!this.map.tiles[y]?.[x] || distance < 1 || (!STRATEGIC_WEAPONS[weapon.unitType.id].globalRange && distance > range)) return `Target must be within launch range ${range}`;
     // Never silently drag neutral countries into war through collateral damage.
     const victims = this.getVictims(this.getTiles(config, x, y), weapon.ownerId);
     if (!victims.length) return 'Blast must affect an enemy nation';
@@ -87,7 +102,7 @@ export class StrategicWeaponsSystem {
 
   launch(weapon: Unit, x: number, y: number): boolean {
     if (this.getLaunchFailure(weapon, x, y)) return false;
-    const config = STRATEGIC_WEAPONS[weapon.unitType.id];
+    const config = getStrategicWeaponProfile(weapon)!;
     const tiles = this.getTiles(config, x, y);
     const carrier = this.units.getTransportForUnit(weapon);
     const event: StrategicDetonation = { nationId: weapon.ownerId, weaponId: weapon.unitType.id,
@@ -98,9 +113,31 @@ export class StrategicWeaponsSystem {
     if (carrier) this.units.consumeAllMovement(carrier.id);
     // Remove ordnance before damage: a carrier hit by its own blast must not cause double removal.
     this.units.removeUnit(weapon.id);
-    this.applyAreaEffects(tiles, config, event);
+    this.resolveInterceptions(weapon, event);
+    if (!event.intercepted) this.applyAreaEffects(tiles, config, event);
+    else { event.tiles = 0; event.victimNationIds = []; }
     for (const listener of this.listeners) listener(event);
     return true;
+  }
+
+  /** A stable roll per launched missile/site/round; no renderer state or wall clock enters combat. */
+  private resolveInterceptions(weapon: Unit, event: StrategicDetonation): void {
+    if (!this.nations || !INTERCEPTABLE_MISSILE_IDS.has(weapon.unitType.id)) return;
+    const batteries = this.map.tiles.flat().filter(tile => tile.buildingId === PATRIOT_MISSILE_BATTERY_ID
+      && !tile.buildingBroken && tile.ownerId && tile.ownerId !== weapon.ownerId
+      && (this.diplomacy?.canAttack(tile.ownerId, weapon.ownerId) ?? true)
+      && this.grid.getDistance(tile, event.target) <= PATRIOT_DEFENSE_RADIUS)
+      .sort((a, b) => this.grid.getDistance(a, event.target) - this.grid.getDistance(b, event.target) || a.y - b.y || a.x - b.x);
+    event.interceptions = [];
+    for (const battery of batteries) {
+      const nationId = battery.ownerId!;
+      const treasury = this.nations.getResources(nationId);
+      if (!treasury || treasury.gold < PATRIOT_INTERCEPTION_GOLD_COST) continue;
+      treasury.gold -= PATRIOT_INTERCEPTION_GOLD_COST;
+      const success = airMissionRoll(`patriot:${this.getRound()}:${weapon.id}:${nationId}:${battery.x},${battery.y}`) < PATRIOT_INTERCEPTION_CHANCE;
+      event.interceptions.push({ battery: { x: battery.x, y: battery.y }, nationId, success });
+      if (success) { event.intercepted = true; break; }
+    }
   }
 
   /** Reactor accidents share weapon damage and waste, without weapon-use diplomacy. */
@@ -144,6 +181,11 @@ export class StrategicWeaponsSystem {
       this.cities.notifyHealthChanged(city);
     }
     const casualties = new Set<string>();
+    if (INTERCEPTABLE_MISSILE_IDS.has(event.weaponId)) {
+      for (const pad of this.storage.getPads()) if (keys.has(`${pad.x},${pad.y}`)) {
+        for (const missile of this.storage.getStoredMissiles(pad.x, pad.y)) casualties.add(missile.id);
+      }
+    }
     const unitsBeforeBlast = [...this.units.getAllUnits()];
     for (const unit of unitsBeforeBlast) {
       const key = `${unit.tileX},${unit.tileY}`;

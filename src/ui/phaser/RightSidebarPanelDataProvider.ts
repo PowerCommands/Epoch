@@ -2,6 +2,8 @@ import { AUDIENCE_CATEGORIES, type AudienceCategory } from '../dialogs/AudienceC
 import { getCityRenewableCapacity } from '../../systems/RenewableBuildingEffects';
 import type { UnitType } from '../../entities/UnitType';
 import { interceptionProfile } from '../../data/airOperations';
+import type { MissileStorageSystem } from '../../systems/MissileStorageSystem';
+import { getStrategicWeaponProfile } from '../../data/strategicWeapons';
 import { getNuclearCapability } from '../../systems/ai/AIStrategicWeapons';
 import type { WorldCouncilResolutionId } from '../../types/worldCouncil';
 import { buildWorldOverviewContent, type WorldOverviewCategory } from './WorldOverviewContent';
@@ -19,6 +21,7 @@ import { ALL_UNIT_TYPES } from '../../data/units';
 import { ALL_WONDERS } from '../../data/wonders';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../../data/cities';
 import { CORPORATIONS } from '../../data/corporations';
+import { STRATEGIC_COMPONENTS } from '../../data/strategicComponents';
 import { getManufacturedResourceById } from '../../data/manufacturedResources';
 import { getManufacturedResourceEffectSummary } from '../../systems/ManufacturedResourceEffects';
 import {
@@ -269,6 +272,35 @@ export class RightSidebarPanelDataProvider {
   private foundCity: ((unit: Unit) => void) | null = null;
   private builderHintProvider: BuilderHintProvider | null = null;
   private aircraftProductionRequestHandler?: (city: City, unitType: UnitType) => void;
+  private missileStorage?: MissileStorageSystem;
+  private selectStoredMissile?: (unit: Unit) => void;
+  private canManageMissiles: () => boolean = () => false;
+  setMissileStorage(storage: MissileStorageSystem, select: (unit: Unit) => void, canManage: () => boolean): void {
+    this.missileStorage = storage; this.selectStoredMissile = select; this.canManageMissiles = canManage;
+  }
+
+  private getMissileRows(x: number, y: number): RightSidebarRow[] {
+    const storage = this.missileStorage;
+    const pad = storage?.getPadAt(x, y);
+    if (!pad || !storage) return [];
+    const rows: RightSidebarRow[] = [textRow('Missile Launch Pad', false, true), textRow(pad.operational ? 'Operational' : 'Broken — repair to restore launches', !pad.operational)];
+    if (pad.ownerId !== this.humanNationId) return [...rows, textRow('Missile Capacity: 4 · Arsenal classified', true)];
+    const missiles = storage.getStoredMissiles(x, y);
+    rows.push(textRow(`Missile Capacity: ${missiles.length} / ${pad.capacity}`),
+      textRow(`Available Nuclear Warheads: ${this.nationManager.getNation(pad.ownerId)?.nuclearWarheads ?? 0}`));
+    for (const missile of missiles) {
+      const name = missile.unitType.id === 'icbm' ? `ICBM · ${missile.nuclearArmed ? 'Nuclear armed' : 'Conventional'}` : missile.unitType.name;
+      rows.push(buttonRow(`Select ${name}`, () => { this.selectStoredMissile?.(missile); }));
+      if (missile.unitType.id === 'icbm' && !missile.nuclearArmed) {
+        const reason = storage.getArmFailure(missile);
+        rows.push({ kind: 'button', text: 'Mount Nuclear Warhead', disabled: !!reason || !this.canManageMissiles(),
+          onClick: () => { if (this.canManageMissiles()) storage.armMissile(missile); this.requestRefresh(); } });
+        if (reason) rows.push(textRow(reason, true));
+      }
+    }
+    if (!missiles.length) rows.push(textRow('No missiles stored. Produce ICBMs or Nuclear Missiles in a city.', true));
+    return rows;
+  }
   setAircraftProductionRequestHandler(handler: (city: City, unitType: UnitType) => void): void {
     this.aircraftProductionRequestHandler = handler;
   }
@@ -1032,6 +1064,11 @@ export class RightSidebarPanelDataProvider {
         true,
       ));
     }
+    rows.push(...this.getMissileRows(tile.x, tile.y));
+    if (tile.buildingId === 'patriot_missile_battery') rows.push(textRow('Patriot Missile Battery', false, true),
+      textRow(tile.buildingBroken ? 'Broken — cannot intercept' : 'Operational'),
+      textRow('Defense radius: 5 tiles · Interception: 80%'), textRow('Each attempt costs 10,000 Gold, success or failure'),
+      ...(tile.ownerId && tile.ownerId === this.humanNationId ? [textRow((this.nationManager.getResources(tile.ownerId).gold >= 10000) ? 'Treasury can fund an interception' : 'Cannot fire: treasury below 10,000 Gold', true)] : []));
     return { title: 'Details', sections: [{ title: 'Tile', rows }, this.getFinderSection()] };
   }
 
@@ -1152,6 +1189,7 @@ export class RightSidebarPanelDataProvider {
           textRow(`Tile position: ${city.tileX}, ${city.tileY}`),
           textRow(defenseLabel),
           textRow(`Garrison: ${garrison?.name ?? 'none'}`),
+          ...this.getMissileRows(city.tileX, city.tileY),
         ],
           }],
         };
@@ -1213,8 +1251,8 @@ export class RightSidebarPanelDataProvider {
       textRow(`HP: ${unit.health}/${unit.unitType.baseHealth}`),
       progressRow('Health', unit.health, unit.unitType.baseHealth),
       textRow(`Strength: ${unit.unitType.baseStrength}`),
-      textRow(`Range: ${unit.unitType.id === 'atomic_bomb' ? this.unitManager.getTransportForUnit(unit)?.unitType.range ?? 0 : unit.unitType.range ?? 1}`),
-      textRow(`Movement: ${unit.movementPoints}/${unit.maxMovementPoints}`),
+      textRow(`Range: ${unit.unitType.id === 'icbm' ? 'Global' : unit.unitType.id === 'atomic_bomb' ? this.unitManager.getTransportForUnit(unit)?.unitType.range ?? 0 : unit.unitType.range ?? 1}`),
+      textRow(`${unit.missileLaunchPad ? 'Launch actions' : 'Movement'}: ${unit.movementPoints}/${unit.maxMovementPoints}`),
     ];
     const mission = this.worldCouncilSystem?.getPeacekeepingAssignment(unit.ownerId, unit.id);
     if (mission) {
@@ -1223,13 +1261,19 @@ export class RightSidebarPanelDataProvider {
       rows.push(textRow(`UN Peacekeeper: protecting ${host} from ${threat}. Defensive mandate; no city captures or unrelated attacks.`, true));
     }
     const air = this.unitManager.airOperations;
+    if (unit.missileLaunchPad && unit.ownerId === this.humanNationId) rows.push(...this.getMissileRows(unit.tileX, unit.tileY));
     if (unit.unitType.aircraftRole) rows.push(textRow(`Base: ${air?.baseFor(unit)?.name ?? 'Unassigned'}`), textRow(`Air Mission / Rebase range: ${unit.unitType.range}`), textRow(`Quality: ${unit.qualityLevel}`));
     if (unit.unitType.aircraftRole === 'fighter' || unit.unitType.airDefense) {
       const profile = interceptionProfile(unit.qualityLevel,unit.unitType.aircraftRole === 'fighter');
       rows.push(textRow(`Quality: ${unit.qualityLevel}. Interception: ${profile.radius} tiles, ${Math.round(profile.chance*100)}%`));
     }
     if (unit.unitType.aircraftCapacity) rows.push(textRow(`Aircraft: ${air?.usage({ kind: 'carrier', id: unit.id }) ?? 0} / ${unit.unitType.aircraftCapacity}`));
-    if (unit.unitType.description) rows.push(textRow(unit.unitType.description, true));
+    if (unit.unitType.id === 'icbm') {
+      const profile = getStrategicWeaponProfile(unit)!;
+      rows.push(textRow(`Payload: ${unit.nuclearArmed ? 'Nuclear armed' : 'Conventional'} · Blast radius: ${profile.radius}`),
+        textRow(`${profile.unitDamage} unit damage · ${profile.cityDamage} city damage`, true),
+        textRow(profile.nuclear ? 'Nuclear Missile effects. Leaves Nuclear Waste.' : 'No Nuclear Waste or nuclear diplomatic consequences.', true));
+    } else if (unit.unitType.description) rows.push(textRow(unit.unitType.description, true));
     if (unit.unitType.cargoCapacity) rows.push(textRow(`Cargo: ${unit.cargoUnitIds.length}/${unit.unitType.cargoCapacity}. Carries: ${(unit.unitType.allowedCargoUnitIds ?? unit.unitType.allowedCargoCategories ?? []).join(', ')}`));
     if (unit.improvementCharges !== undefined) {
       rows.push(textRow(`Improvements left: ${unit.improvementCharges}`));
@@ -1271,7 +1315,8 @@ export class RightSidebarPanelDataProvider {
         title: 'Nation',
         rows: [
           textRow(`${nation.name}${isHuman ? ' (You)' : ''}`, false, true, nation.color),
-          ...(isHuman ? [textRow(`Nuclear arsenal: ${getNuclearCapability(nationId, this.unitManager, this.cityManager).stockpile} weapons; ${getNuclearCapability(nationId, this.unitManager, this.cityManager).ready} based for launch`)] : []),
+          ...(isHuman ? [textRow(`Nuclear arsenal: ${getNuclearCapability(nationId, this.unitManager, this.cityManager, this.missileStorage).stockpile} weapons; ${getNuclearCapability(nationId, this.unitManager, this.cityManager, this.missileStorage).ready} based for launch`),
+            textRow(`Available Nuclear Warheads: ${this.nationManager.getNation(nationId)?.nuclearWarheads ?? 0}`)] : []),
           ...(era ? [textRow(`Era: ${formatEraLabel(era)}`)] : []),
         ],
       },
@@ -1767,6 +1812,23 @@ export class RightSidebarPanelDataProvider {
         }
         this.productionSystem.enqueue(city.id, item);
         this.requestRefresh();
+        },
+      });
+    }
+    for (const componentType of STRATEGIC_COMPONENTS) {
+      if (!this.nationManager.getNation(city.ownerId)?.researchedTechIds.includes(componentType.requiredTechId)) continue;
+      const item: Producible = { kind: 'strategicComponent', componentType };
+      const stock = this.nationManager.getNation(city.ownerId)?.nuclearWarheads ?? 0;
+      const reason = this.productionSystem.getItemProductionBlockReason(city.id, item);
+      rows.push({
+        kind: 'button',
+        text: `${componentType.name} (${this.productionSystem.getCost(item, city.id)}) — ${stock} available${reason ? ` — ${reason}` : ''}`,
+        disabled: reason !== undefined,
+        accentColor: 0xe8b85f,
+        spritePath: getProducibleSpritePath(item),
+        onClick: () => {
+          this.productionSystem.enqueue(city.id, item);
+          this.requestRefresh();
         },
       });
     }
@@ -3506,6 +3568,8 @@ function getProducibleName(item: Producible): string {
       return item.corporationType.name;
     case 'manufacturedResource':
       return item.productionType.name;
+    case 'strategicComponent':
+      return item.componentType.name;
     case 'project':
       return item.projectType.name;
     case 'tradeRoute':
@@ -3523,6 +3587,8 @@ function getProducibleSpritePath(item: Producible): string | undefined {
       return getCorporationSpritePath(item.corporationType.id);
     case 'manufacturedResource':
       return getCorporationSpritePath(AEROSPACE_PARTS_ID);
+    case 'strategicComponent':
+      return getProjectSpritePath(item.componentType.id);
     case 'project':
       return getProjectSpritePath(item.projectType.id);
     case 'building':

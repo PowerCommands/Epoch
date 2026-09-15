@@ -41,7 +41,7 @@ export const SAVED_GAME_VERSION = 7 as const;
 
 export interface SavedProducible {
   aircraftBase?: import('../entities/Unit').AircraftBase;
-  kind: 'unit' | 'building' | 'wonder' | 'corporation' | 'manufacturedResource' | 'project' | 'tradeRoute';
+  kind: 'unit' | 'building' | 'wonder' | 'corporation' | 'manufacturedResource' | 'strategicComponent' | 'project' | 'tradeRoute';
   id: string;
   /** Extra fields for tradeRoute queue entries. Optional for backward compat. */
   fromCityId?: string;
@@ -108,6 +108,8 @@ export interface SavedNation {
   cultureProgress?: number;
   /** Settlers historically completed through production. Optional for older saves. */
   settlersProduced?: number;
+  /** Unmounted warhead inventory. Older saves start with none. */
+  nuclearWarheads?: number;
   /** Active AI endgame strategy. Optional for saves predating Victory Focus. */
   aiVictoryFocus?: AIVictoryFocusState;
   /** Active Cultural Jealousy target. Optional for saves predating the agenda. */
@@ -188,6 +190,8 @@ export interface SavedUnit {
   queuedDestination?: { x: number; y: number };
   improvementCharges?: number;
   airBase?: import('../entities/Unit').AircraftBase;
+  missileLaunchPad?: { x: number; y: number };
+  nuclearArmed?: boolean;
   carriedByUnitId?: string;
   cargoUnitIds?: string[];
   /** Legacy save-load migration field. Runtime Unit state uses carriedByUnitId. */

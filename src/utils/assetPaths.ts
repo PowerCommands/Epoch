@@ -9,7 +9,7 @@ export function getCitySpritePath(era: Era, damaged = false): string {
 }
 
 export function getUnitSpritePath(unitId: string): string {
-  return `assets/sprites/units/${unitId}.png`;
+  return `assets/sprites/units/${unitId}.${unitId === 'icbm' ? 'svg' : 'png'}`;
 }
 
 export function getUnitActionSpritePath(unitId: string, actionId: string): string {
@@ -27,7 +27,7 @@ export function getUnitActionSpriteKey(unitId: string, actionId: string): string
 export function getBuildingSpritePath(buildingId: string, broken = false): string {
   // The civilian airport shares the existing modern aviation artwork.
   if (buildingId === 'airport') buildingId = 'air_base';
-  return `assets/sprites/buildings/${buildingId}${broken ? '-broken' : ''}.${buildingId === 'nuclear_silo' ? 'svg' : 'png'}`;
+  return `assets/sprites/buildings/${buildingId}${broken ? '-broken' : ''}.${['nuclear_silo', 'patriot_missile_battery'].includes(buildingId) ? 'svg' : 'png'}`;
 }
 
 export function getBuildingSpriteKey(buildingId: string): string {
@@ -70,7 +70,7 @@ export function getCorporationSpriteKey(corporationId: string): string {
 }
 
 export function getProjectSpritePath(projectId: string): string {
-  return `assets/sprites/projects/${projectId}.png`;
+  return `assets/sprites/projects/${projectId}.${projectId === 'nuclear_warhead' ? 'svg' : 'png'}`;
 }
 
 export function getProjectSpriteKey(projectId: string): string {

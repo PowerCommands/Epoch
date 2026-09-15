@@ -136,6 +136,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | atomic_bomb | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
 | guided_missile | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
 | nuclear_missile | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
+| icbm | Tall metallic missile, compact fins and a separate engine bell. Stored ordnance remains still; the cinematic renderer supplies launch and flight motion. |
 | leaders | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
 
 ## building
@@ -206,7 +207,8 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | windmill | Original four lattice sails rotate; reconstructed roof support remains stationary. |
 | workshop | Work dust in the open work bay; no invented chimney or fire. |
 | zoo | Courtyard activity and occasional bird inside/above the enclosure. |
-| nuclear_silo | SVG depicts an open silo and stored missile. No painted operational lamp: keep still. |
+| nuclear_silo | Missile Launch Pad SVG depicts four reinforced magazine hatches and a service gantry. Still at rest; damaged art shows collapsed hatches without a secondary detonation. |
+| patriot_missile_battery | Elevated launch canisters and a radar array remain still. The strike renderer shows actual interceptions; damaged artwork has collapsed canisters and a fallen radar panel. |
 
 ## wonder
 

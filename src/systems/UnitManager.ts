@@ -90,6 +90,8 @@ export class UnitManager {
     tileX: number;
     tileY: number;
     airBase?: import('../entities/Unit').AircraftBase;
+    missileLaunchPad?: { x: number; y: number };
+    nuclearArmed?: boolean;
     movementPoints?: number;
     improvementCharges?: number;
     /**
@@ -109,6 +111,8 @@ export class UnitManager {
       unitType: config.type,
       maxMovementPoints: this.getEffectiveMovementPoints(config.type, config.ownerId),
       airBase: config.airBase,
+      missileLaunchPad: config.missileLaunchPad,
+      nuclearArmed: config.nuclearArmed,
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
       qualityLevel: config.qualityLevel,
@@ -165,7 +169,7 @@ export class UnitManager {
     const offGridUnits = this.offGridUnitsByTile.get(key);
     if (offGridUnits === undefined) return null;
     for (const unit of offGridUnits) {
-      if (!isCovertOperative(unit.unitType) && !unit.unitType.aircraftRole) return unit;
+      if (!isCovertOperative(unit.unitType) && !unit.unitType.aircraftRole && !unit.missileLaunchPad) return unit;
     }
     return null;
   }
@@ -231,6 +235,7 @@ export class UnitManager {
     if (!this.canBoardUnit(unit, transport)) return false;
 
     this.clearFromGrid(unit);
+    unit.missileLaunchPad = undefined;
     unit.carriedByUnitId = transport.id;
     unit.tileX = transport.tileX;
     unit.tileY = transport.tileY;
@@ -263,7 +268,7 @@ export class UnitManager {
   moveUnit(unitId: string, tileX: number, tileY: number, movementCost = 0): boolean {
     const unit = this.units.get(unitId);
     if (unit === undefined) return false;
-    if (unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined) return false;
+    if (unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined || unit.missileLaunchPad || unit.unitType.id === 'icbm') return false;
 
     this.clearFromGrid(unit);
     unit.tileX = tileX;
@@ -282,6 +287,16 @@ export class UnitManager {
     }
 
     return true;
+  }
+
+  /** Move stored ordnance off the combat collision grid without making it aircraft/cargo. */
+  assignMissileToPad(unit: Unit, pad: { x: number; y: number }): void {
+    this.clearFromGrid(unit);
+    unit.missileLaunchPad = { x: pad.x, y: pad.y };
+    unit.tileX = pad.x;
+    unit.tileY = pad.y;
+    unit.queuedDestination = undefined;
+    this.notify({ unit, reason: 'moved' });
   }
 
   consumeAllMovement(unitId: string): boolean {
@@ -458,6 +473,8 @@ export class UnitManager {
     maxMovementPoints?: number;
     improvementCharges?: number;
     airBase?: import('../entities/Unit').AircraftBase;
+    missileLaunchPad?: { x: number; y: number };
+    nuclearArmed?: boolean;
     carriedByUnitId?: string;
     cargoUnitIds?: string[];
     isSleeping: boolean;
@@ -480,6 +497,8 @@ export class UnitManager {
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
       airBase: config.airBase,
+      missileLaunchPad: config.missileLaunchPad,
+      nuclearArmed: config.nuclearArmed,
       carriedByUnitId: config.carriedByUnitId,
       cargoUnitIds: config.cargoUnitIds,
       qualityLevel: config.qualityLevel,
@@ -614,7 +633,7 @@ export class UnitManager {
   }
 
   private placeOnGrid(unit: Unit): void {
-    if (unit.carriedByUnitId !== undefined) return;
+    if (unit.carriedByUnitId !== undefined || unit.missileLaunchPad) return;
     const key = this.gridKey(unit.tileX, unit.tileY);
     if (key === null) return;
     // Covert operatives never take the collision slot so they neither block nor

@@ -9,7 +9,7 @@ export type Era =
   | 'information'
   | 'future';
 
-export type TechnologyUnlockKind = 'unit' | 'building' | 'improvement' | 'wonder';
+export type TechnologyUnlockKind = 'unit' | 'building' | 'improvement' | 'wonder' | 'strategicComponent';
 
 export interface TechnologyUnlock {
   kind: TechnologyUnlockKind;
@@ -777,10 +777,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Rocketry',
     era: 'modern',
     cost: 6400,
-    description: 'Turns propulsion into missiles and modern artillery. Unlocks Rocket Artillery and Mobile SAMs.',
+    description: 'Turns propulsion into missiles and modern artillery. Unlocks Rocket Artillery, Mobile SAMs, and Missile Launch Pads with four missile storage slots.',
     prerequisites: ['radar'],
     leadsTo: ['satellites'],
-    unlocks: [{ kind: 'unit', id: 'rocket_artillery' }, { kind: 'unit', id: 'mobile_sam' }],
+    unlocks: [{ kind: 'unit', id: 'rocket_artillery' }, { kind: 'unit', id: 'mobile_sam' }, { kind: 'building', id: 'nuclear_silo' }],
     // TODO: unlocks Apollo Program.
   },
   {
@@ -798,10 +798,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Nuclear Fission',
     era: 'modern',
     cost: 6400,
-    description: 'Splits atoms for immense energy and destructive weapons. Unlocks Atomic Bombs, Bazookas, and Nuclear Power Plants.',
+    description: 'Splits atoms for immense energy and destructive weapons. Unlocks Atomic Bombs, Nuclear Warheads for ICBMs, Bazookas, and Nuclear Power Plants.',
     prerequisites: ['atomic_theory', 'radar'],
     leadsTo: ['advanced_ballistics', 'mobile_tactics'],
-    unlocks: [{ kind: 'unit', id: 'atomic_bomb' }, { kind: 'unit', id: 'bazooka' }, { kind: 'building', id: 'nuclear_plant' }, { kind: 'wonder', id: 'hoover-dam' }],
+    unlocks: [{ kind: 'unit', id: 'atomic_bomb' }, { kind: 'unit', id: 'bazooka' }, { kind: 'building', id: 'nuclear_plant' }, { kind: 'wonder', id: 'hoover-dam' }, { kind: 'strategicComponent', id: 'nuclear_warhead' }],
   },
   {
     id: 'globalization',
@@ -839,10 +839,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Satellites',
     era: 'modern',
     cost: 7000,
-    description: 'Places observation and guidance systems above the world. Unlocks Guided Missiles, permanently reveals the entire world map (geographic discovery only — ordinary fog of war still hides enemy units and current activity), and enables future space-age research.',
+    description: 'Places observation and guidance systems above the world. Unlocks Guided Missiles and globally ranged ICBMs, permanently reveals the entire world map (geographic discovery only — ordinary fog of war still hides enemy units and current activity), and enables future space-age research.',
     prerequisites: ['rocketry'],
     leadsTo: ['particle_physics', 'nuclear_fusion'],
-    unlocks: [{ kind: 'unit', id: 'guided_missile' }],
+    unlocks: [{ kind: 'unit', id: 'guided_missile' }, { kind: 'unit', id: 'icbm' }],
     // TODO: unlocks SS Cockpit.
   },
   {
@@ -860,10 +860,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Advanced Ballistics',
     era: 'modern',
     cost: 7000,
-    description: 'Perfects missile guidance, payloads, and strategic delivery. Unlocks Guided Missiles and Nuclear Missiles.',
+    description: 'Perfects missile guidance, payloads, and strategic delivery. Unlocks Guided Missiles, Nuclear Missiles, and Patriot Missile Batteries for strategic interception.',
     prerequisites: ['nuclear_fission'],
     leadsTo: ['nuclear_fusion'],
-    unlocks: [{ kind: 'unit', id: 'guided_missile' }, { kind: 'unit', id: 'nuclear_missile' }, { kind: 'building', id: 'nuclear_silo' }],
+    unlocks: [{ kind: 'unit', id: 'guided_missile' }, { kind: 'unit', id: 'nuclear_missile' }, { kind: 'building', id: 'patriot_missile_battery' }],
   },
   {
     id: 'telecommunications',

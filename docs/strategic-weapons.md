@@ -1,84 +1,87 @@
 # Strategic weapons: implementation and playtest guide
 
-## Architecture investigation
+## Technology and production
 
-The existing Guided Missile had ranged strength but no consumption or blast path, so it could act as a reusable ranged air unit. Atomic Bomb and Nuclear Missile had no ranged strength, and ordinary combat rejected them. Bomber and Stealth Bomber already provided suitable ranged strike profiles (10 and 20 hexes); they did not have cargo. Nuclear Submarine was a long-range naval combat unit without missile capacity. Bomb Shelter explicitly described its nuclear reduction as omitted.
+| Technology | New capability | Production | Maintenance |
+| --- | --- | ---: | ---: |
+| Rocketry | Missile Launch Pad | 450 | 8 Gold/turn |
+| Satellites | ICBM, initially conventional | 450 | 15 Gold/turn |
+| Nuclear Fission | Nuclear Warhead component | 1,800 | None |
+| Advanced Ballistics | Patriot Missile Battery | 900 | 4 Gold/turn |
 
-The reusable parts were substantial: axial hex range queries; multi-unit/cargo ownership, movement and serialization in UnitManager; adjacent boarding rules; city health/population and repairable CityBuildings; timed Worker improvement construction; resource quantities/capacity and Uranium demand; shared city production restrictions; Council/UN emergency sessions with human voting deferral; canonical diplomacy war transitions; and the persistent History/Newspaper pipeline.
+The existing Atomic Bomb, Guided Missile, Nuclear Missile, bomber and submarine technology gates remain in place. The player-facing Nuclear Silo has become **Missile Launch Pad**. The internal `nuclear_silo` id and `NUCLEAR_SILO` export remain compatibility aliases.
 
-Uranium requirements already apply to both nuclear ordnance types and Nuclear Submarine. Nuclear Power Plant already requires Uranium to construct and operate, has a 100-turn life, and supplies its existing production/capacity effects. These systems remain authoritative; contamination now makes resource quantity zero until cleanup. The existing Non-Proliferation Treaty is an **UN member production restriction**, not a disarmament or launch ban. Both queue selection and completion already consult that restriction. New ordnance continues to use those paths and IDs.
+Nuclear Warheads use the existing production queue as finite `strategicComponent` items. A completed warhead increases the owner's `Nation.nuclearWarheads` stockpile; it is never a map unit. Production requires Nuclear Fission and Uranium. A stored conventional ICBM can mount one available warhead through **Mount Nuclear Warhead**. Mounting consumes the component and persists `Unit.nuclearArmed`.
 
-## Chosen architecture
+The UN Non-Proliferation Treaty follows its existing member-production semantics: it blocks new Atomic Bombs, Nuclear Missiles and Nuclear Warheads. Conventional ICBM production and use remain legal. Existing nuclear weapons and already-produced warheads retain their capability; the treaty does not disarm them or prohibit launch.
 
-- `src/data/strategicWeapons.ts` contains blast profiles, cleanup duration, shelter multiplier, deterrence strength and generated weapon descriptions.
-- `StrategicWeaponsSystem` validates delivery and resolves area effects outside ordinary ranged combat. CombatSystem routes strategic attacks through it after enforcing turn and combat blockers. It uses the existing hex grid and entity managers.
-- Bomber and Stealth Bomber each carry one Atomic Bomb. Nuclear Submarine carries three Guided/Nuclear Missiles in any combination. Cargo gains an optional exact-unit-ID allowlist; ordinary transports retain category-based rules.
-- Nuclear Silo is a city building unlocked by Advanced Ballistics. Nuclear Missiles produced in a city are stationed on its center tile. A working, owned silo authorizes launch from that tile. Missiles remain ordinary saved units; the silo needs no second inventory or cargo ledger. Land storage has no separate count cap; production, Uranium capacity and upkeep limit stockpiles. Broken or captured silos do not authorize the former owner's launches.
-- Atomic Bomb cannot move independently. Load it from the same/adjacent tile. Launching consumes its bomber's remaining action and the bomb. A submarine similarly launches one payload per turn; silo-based missiles each consume their own action. Missiles can relocate on land and load submarines; they cannot launch from open water independently.
-- No new stealth model is introduced. Submarine survivability comes from mobility, fog, range, AI standoff positioning and a higher deterrence valuation for submarine-based warheads.
+## Launch Pads and delivery
 
-## Default balance
+New Launch Pads are repeatable military buildings placed on empty owned land outside the city center. Each holds **four missiles**, with any mixture of Nuclear Missiles, conventional ICBMs and nuclear-armed ICBMs. An installed warhead consumes no additional slot. Production rechecks working capacity at selection and completion.
 
-All radii include the center tile and every axial hex within the radius; full areas contain 7, 37 and 61 tiles respectively. There is no damage falloff.
+`MissileStorageSystem` derives facility state from existing tile/city buildings and stores the assignment on each real missile as `missileLaunchPad: {x, y}`. There is no duplicate inventory. Owners can inspect exact stored missile types, arming state, occupancy and operational state. Enemy inspection reveals the installation without exposing its exact magazine contents.
 
-| Weapon | Radius | Unit HP damage | City HP damage | Population loss | Buildings broken |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Guided Missile | 1 | 60 | 70 | 0% | 15% |
-| Atomic Bomb | 3 | 120 | 180 | 50% | 60% |
-| Nuclear Missile | 4 | 160 | 240 | 65% | 80% |
+To manage a pad, select its tile and open **Details** using the minimap control. The inventory lists each missile, with **Mount Nuclear Warhead** beside conventional ICBMs. Choose **Select ICBM** to access its launch action. The **I** tile inspector also shows capacity, payloads and facility status.
 
-Population losses and building counts round down. Building selection is stable by ID. City-center blasts leave at least one population and one city HP: weapons devastate cities but do not capture them or invoke ordinary capital capitulation. Conventional forces must exploit the aftermath. Military casualties feed the existing war-loss accounting.
+Ordinary military building attacks break the installation while stored missiles survive. Broken pads cannot launch; repair restores them. A Guided Missile, Nuclear Missile or ICBM blast that includes a pad destroys **every stored missile**, regardless of the stored missiles' remaining HP. Destruction of stored nuclear materiel never triggers secondary nuclear explosions.
 
-All three destroy improvements throughout their area and damage units regardless of civilian/military/naval status or stacking. Destroyed transports lose their cargo. Applicable city buildings become repairable ruins; standalone buildings hit by the blast are broken. Existing wonders retain their existing protection from this new damage path.
+ICBMs have a dedicated global-targeting rule, separate from ordinary unit range. They must launch from a working pad. Nuclear Missiles retain range **12**, and may also launch from Nuclear Submarine cargo. Guided Missiles retain range **8** and their existing land/submarine delivery. Nuclear Submarines carry three Guided/Nuclear Missiles. Bomber and Stealth Bomber each carry one Atomic Bomb, using bomber ranges **10** and **20** respectively. Atomic Bombs cannot move independently.
 
-A working Bomb Shelter halves nuclear damage to city HP, population, the city-center building damage fraction, and units on the city tile. It does not halve Guided Missile damage or protect surrounding terrain. Protection is evaluated before effects. Infrastructure on outlying tiles can also be hit directly.
+Launching consumes the missile. Cargo launches also consume the carrier's remaining action. Strategic attacks preserve turn, ownership, valid-target and neutral-collateral restrictions. Human strategic targeting can select coordinates in fog without revealing their occupants; AI targets only known positions.
 
-Atomic Bomb and Nuclear Missile turn land into Nuclear Waste, excluding Mountain, Coast and Ocean. Waste provides zero yields and zero resource quantity. Terrain identity is retained across repeated strikes. Worker cleanup takes **5 turns**, uses existing improvement-speed modifiers and a Worker charge on completion, restores the exact original terrain, and leaves improvements destroyed. The action is available on owned contaminated land serviced by the existing city/Worker architecture, including city centers. Moving or losing the Worker cancels construction through the existing rules.
+## Damage and environmental effects
 
-Silo cost is **450 production / 8 maintenance**. Existing weapon costs, ranges, resource requirements and upkeep remain unchanged. Nuclear deterrence adds **350 defensive strength per ready weapon**, capped at four, plus **175 per submarine warhead**, capped at two. Mutual nuclear capability multiplies the defender's deterrence contribution by **1.5**. These are defensive war-evaluation terms, not conventional attack strength.
+`src/data/strategicWeapons.ts` is the canonical balance source. `getStrategicWeaponProfile(unit)` returns the existing Nuclear Missile profile for an armed ICBM. Global delivery remains a property of the original ICBM definition.
 
-## Politics and AI
+| Weapon | Radius | Unit HP damage | City HP damage | Population loss | Buildings broken | Nuclear Waste |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Guided Missile | 1 | 60 | 70 | 0% | 15% | No |
+| Conventional ICBM | 2 | 120 | 180 | 50% | 60% | No |
+| Atomic Bomb | 3 | 120 | 180 | 50% | 60% | Yes |
+| Nuclear Missile / nuclear-armed ICBM | 4 | 160 | 240 | 65% | 80% | Yes |
 
-Successful nuclear use is recorded as a priority-120 newspaper/history event before its Council/UN response. Global relation consequences reuse condemnation memory effects (Trust −15, Fear +5, Hostility +15), identified as nuclear use. Guided Missiles do neither.
+The conventional ICBM shares Atomic Bomb direct damage values and has no nuclear classification, mushroom cloud, waste or nuclear-specific diplomatic consequences. Radii include the center and all axial hexes within the radius; there is no damage falloff. Population and city-building counts round down. Cities retain at least one HP and one population; strategic weapons do not capture cities. Physical installations hit by a blast become broken, while existing Wonder protection remains authoritative.
 
-Each affected foreign nation raises an emergency response in the active institution. The victim supports; the aggressor is excluded. Eligible members make one equal-weight decision without spending Influence. A majority of eligible nations must support. Only supporters enter the victim's war through canonical diplomacy; rejected/absent human input never declares war. Existing diplomatic blockers remain effective. The response source does not activate additional alliance/vassal declarations or mark interveners as new aggressors. Multiple unresolved human emergency ballots persist in the normal meeting history and are resumed in order.
+A working Bomb Shelter halves nuclear damage to city HP, population, city-center building damage and units on the city tile. It does not reduce conventional ICBM/Guided Missile damage or protect surrounding terrain.
 
-AI production competes through the existing production candidate scoring and resource/treaty gates. It seeks bomber delivery for an Atomic Bomb, a silo or submarine for later missiles, small arsenals, and Bomb Shelters when known rivals possess nuclear weapons. Existing strategic resource demand includes Uranium needed by unlocked nuclear units and power plants.
+Nuclear strikes contaminate land except Mountain, Coast and Ocean. Nuclear Waste has zero yields and resource quantity. Worker cleanup takes five turns before existing speed modifiers, consumes a charge, restores the original terrain and leaves destroyed improvements absent. Cleanup progress and original terrain use existing save fields.
 
-AI loads weapons, relocates land missiles to silos, moves armed platforms into standoff range, and evaluates complete blast areas. Guided Missiles favor worthwhile conventional targets. Nuclear firing requires severe military pressure or an endangered city, enough concentrated target value, and no domestic collateral damage. It accounts for leader risk tolerance, hostility/trust/fear, enemy nuclear retaliation and predicted collective intervention. The intervention estimate reuses the actual resolution's leader, alliance and military-power scoring. Nuclear possession also changes defensive war power and the AI's temporary diplomatic fear assessment. No random firing is used.
+## Patriot interception
 
-AI uses Epoch's existing simulation knowledge for strategic power assessment. Player views show their own arsenal and publicly recorded nuclear use, without revealing hidden foreign stockpile counts or submarine positions.
+Operational Patriot Missile Batteries cover targets within **five hexes** and intercept Guided Missiles, Nuclear Missiles and either ICBM payload. They do not attack ordinary land units or Atomic Bombs delivered by aircraft.
 
-## Player controls and feedback
+Each actual attempt costs **10,000 Gold** and succeeds with **80%** probability. The defender must afford the full attempt; the treasury never becomes negative. Eligible overlapping batteries resolve sequentially, ordered by distance to the target and then coordinates. Processing stops after the first success; batteries that do not fire are not charged. Broken or unaffordable batteries do not attempt interception.
 
-Select ordnance and use **Load Weapon** near a compatible platform. Select the platform and choose **Select Nuclear Payload** or **Select Conventional Payload**, then **Launch** and a map coordinate within range. Strategic weapons can target fog of war without revealing hidden occupants. The existing ranged preview shows the blast footprint on hover. Unit details show classification, radius, damage, carrier restrictions and capacity. A failed launch reports its reason. A blast touching a neutral nation is rejected; declare the relevant war through existing diplomacy first.
+Rolls use the existing deterministic combat helper with the round, missile identity, defending nation and battery coordinates. Resolution completes before presentation begins. A successful interception consumes the incoming missile and causes no target damage, nuclear waste or nuclear-use consequences.
 
-Nuclear Waste uses the native terrain renderer's dark/acid-green style and a matching minimap color. Tile inspection names the original terrain. Cleanup has a brush icon. The silo has a vector building asset using the existing asset-path/manifest pipeline.
+## Globe presentation
 
-`[Strategic]` diagnostics report production, periodic AI arsenal/ready counts, launch platform and target, casualties/contaminated tiles, nuclear use, Council/UN outcomes, intervention membership and retained deterrence. These are event/periodic logs, not per-target scoring spam.
+`ICBMStrikeRenderer` uses the existing `CameraController` and globe projection, and shares effect textures with `NuclearStrikeRenderer`. It presents ignition and vertical ascent, a pullback into Globe Mode, a high ballistic arc, re-entry, any resolved Patriot interceptions, and an impact while viewing the globe. Conventional impact uses a compact dust/explosion treatment. Nuclear impact develops a much larger rising mushroom cloud before the camera returns toward the target. Own launches show their impact over fog without revealing hidden units or changing visibility. Escape or the Skip button ends playback immediately.
 
-## Persistence and validation
+Animation reads the already-resolved strike event, including origin and interception attempts. It never controls damage, interception payment or turn progression. Off-screen strikes, disabled animations and autorun resolve through the same gameplay path. Transient graphics and camera state are cleaned up when playback completes or the renderer is destroyed. This feature adds no sound effects.
 
-Cargo retains the existing unit serialization. Terrain saves now include current terrain plus optional original terrain, including unowned affected tiles; all tile terrain is serialized so cleaned terrain also survives later saves. Old saves without the new optional fields retain their authored terrain. Cleanup uses saved improvement-construction progress. Silo state uses CityBuildings. Nuclear capability is derived from units/buildings rather than duplicated persistent AI state. Emergencies use existing saved meetings and diplomacy state.
+## Diplomacy and AI
 
-Run `npm run test:strategic` for 34 focused tests across `strategicWeapons.test.ts` and `nuclearDiplomacy.test.ts`. They cover radii/edges, area casualties, delivery/capacity/consumption, shelters, contamination/resource suppression, cleanup/restoration/save-load, actual Worker and strategic AI execution, UI action availability, both global institutions, individual participation, queued ballots, alliance/vassal non-cascading behavior and the UN treaty.
+Successful nuclear strikes reuse nuclear history/newspaper events, relation consequences and Council/UN emergency intervention. Guided Missiles and conventional ICBMs do not create nuclear-use events. Nuclear accidents retain their existing treatment.
 
-The relevant existing Council, diplomacy, resource, newspaper, cargo, construction, AI-production and ceasefire regressions also pass. A pre-existing Hotel test in `terrainRestrictedBuildings.test.ts` expects only +5 Gold, whereas the committed Hotel definition also grants +25%; this mismatch is unrelated to strategic weapons. Two assertions in `archaeologyDig.test.ts` likewise expect an unlimited Archaeologist, although the committed definition has one improvement charge. Its dedicated save/load and UI tests pass; the failing assertions concern charge counts.
+AI uses existing production scoring, doctrine budgets, economy and personality. Stronger economies with military interest or nuclear rivals can build a small number of pads and missiles. Pending missile production reserves capacity in AI planning; Nuclear Warhead production has a higher economic threshold and a small desired stockpile. Wealthy capitals and major production centers consider Patriots only when strategic threats justify them and their treasuries can fund multiple attempts.
 
-Typecheck and production bundle build were validated. In restricted environments the `tsx` CLI's IPC server can fail with EPERM; running each manifest generator using `node --import tsx scripts/<generator>.ts`, followed by the normal TypeScript/Vite build commands, avoids that CLI limitation.
+Global targeting evaluates known enemy cities, visible units and missile installations. Launch Pads receive a fixed strategic score without inspecting hidden stored missiles. AI avoids domestic blast damage. Nuclear use retains the conservative severe-pressure checks, retaliation and intervention costs; mounting a warhead does not make AI casually launch it.
 
-## Late-game playtest priorities
+Nuclear deterrence derives from live delivery readiness: 350 defensive strength per ready weapon, capped at four, plus 175 per submarine weapon, capped at two. Broken Launch Pads contribute stockpile possession but no ready deterrence. Mutual nuclear capability multiplies the defender's deterrence contribution by 1.5.
 
-1. Run Atomic-to-Future autoruns to measure first weapon dates, Uranium acquisition, silo/submarine/bomber mix, stockpile upkeep, and actual nuclear-use frequency.
-2. Tune 37/61-tile blast severity against typical city spacing, recovery speed and Worker availability. Large contaminated empires may need many Worker charges; 5 turns is per tile.
-3. Check AI standoff/rendezvous behavior on archipelagos, crowded coastlines and disrupted silo networks. Nuclear submarines use ordinary naval visibility, not a new undersea detection system.
-4. Evaluate whether deterrence discourages opportunistic conquest without freezing every late-game war, and whether coalition predictions produce plausible leader differences.
-5. Manually exercise mixed submarine cargo, bomber upgrades, tactical hover footprints, multiple emergency dialogs, and loading old/contaminated/cleaned saves. Headless tests do not substitute for the Phaser interaction check.
-6. Measure terrain re-bake and larger terrain-save costs on the largest maps. No long late-game autorun or interactive campaign was performed during this implementation.
+## Save compatibility
 
+Unit saves retain cargo and now include optional pad assignment and ICBM arming fields. Nation saves add the available warhead count; absent fields default to an empty stockpile and conventional payload. Pad and Patriot damage use normal/broken building state.
 
-## Canada save launch regression
+Legacy city-only Nuclear Silos retain their original city-center launch location, including when a new pad is subsequently placed elsewhere. Reconciliation adopts unassigned missiles at the original facility, including legacy inventories above four. These over-capacity inventories can launch but cannot accept additional missiles until a slot becomes free. New construction always uses tile placement. Nuclear capability and AI readiness are derived from canonical saved units and facilities.
 
-The supplied `nuclear_save.json` has a missile in Ottawa with an active Nuclear Silo and a war against the USA. Washington is within missile range but outside current visibility (and unexplored). The original human targeting path rejected those coordinates twice: the visibility check and the selectable-object requirement. Strategic launch input now uses the raw clicked tile, as movement into fog already does, and range previews include coordinates in fog. Ordinary ranged attacks retain their visibility rules. Exhausted weapons retain a disabled Launch control explaining the next-turn requirement. Strategic cargo also refreshes its launch action on its owner's turn.
+In-progress legacy silo queues retain accumulated production and their locked cost. On load they preserve a valid reserved site or reserve the first valid owned land tile. If no site is free, the queue retains its paid work and a placement-block explanation; completion retries when land becomes available.
 
-Browser reproduction: start Vite and run `node tools/nuclearSave.browser.mjs autorun-input/nuclear_save.json http://127.0.0.1:5174 public/assets/maps/america.json`. The last argument supplies the America scenario for this save's browser-local custom map reference; no custom scenario definition was embedded in the supplied save. Saved terrain and game entities are restored normally, and the input file is unchanged. The test uses actual launch-mode selection and a pointer click into fog at Washington: missile consumed, Washington at 1 HP, 37 contaminated land tiles, no browser exceptions. The save contains no active global institution, so this reproduction does not exercise a Council emergency. Unit/system tests cover those responses separately.
+## Validation
+
+Run `npm run test:strategic` for the seven focused gameplay suites, including legacy queue migration. They cover existing nuclear delivery and damage, storage, global conventional strikes, warheads, treaty production, interception, save compatibility, AI visibility/retention and flight geometry. With Vite running, `EPOCH_URL=http://127.0.0.1:5174 npm run test:strategic:browser` checks the cinematic and the real GameScene production/UI flow.
+
+Run the focused suites with `node --import tsx --test <test files>`, plus `npm run typecheck` and the production build. Run a test file directly with `node --import tsx <file>` if the environment's test-runner wrapper hides individual failures. Asset validation uses `tools/structureDamageAssets.test.ts` and `tools/ambientProfiles.test.ts`.
+
+Manual playtesting should exercise mixed inventories, multiple overlapping Patriots, broken-pad repairs, launch from tactical and Globe Mode, both ICBM payloads, repeated cinematics, and save/reload at late-game scale. Continue campaign/autorun balance checks for the timing of first arsenals, production cost, interception treasury pressure and nuclear-use frequency.

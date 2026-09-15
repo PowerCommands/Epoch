@@ -20,6 +20,8 @@ import type {
 import { SAVED_GAME_VERSION } from '../types/saveGame';
 import type { ScenarioInitialDiplomacyEntry } from '../types/scenario';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
+import { MISSILE_LAUNCH_PAD_ID } from '../data/strategicWeapons';
+import { BuildingPlacementSystem } from './BuildingPlacementSystem';
 import { getBuildingUpgradeBlockReason } from './buildingUpgrades';
 import { getUnitTypeById } from '../data/units';
 import { clampMilitaryQualityLevel } from '../data/unitQuality';
@@ -27,6 +29,7 @@ import { getWonderById } from '../data/wonders';
 import { getCorporationById } from '../data/corporations';
 import { getProjectById } from '../data/projects';
 import { AEROSPACE_PART_PRODUCTION, AEROSPACE_PARTS_ID } from '../data/scienceVictory';
+import { getStrategicComponentById, normalizeNuclearWarheads } from '../data/strategicComponents';
 import type { Producible } from '../types/producible';
 import { resolveTradeRouteEstablishmentTurns } from '../types/tradeConnection';
 import type { CityManager } from './CityManager';
@@ -231,6 +234,7 @@ export class SaveLoadService {
         currentCultureNodeId: nation.currentCultureNodeId,
         cultureProgress: nation.cultureProgress,
         settlersProduced: nation.settlersProduced,
+        nuclearWarheads: nation.nuclearWarheads,
         aiVictoryFocus: nation.aiVictoryFocus ? { ...nation.aiVictoryFocus } : undefined,
         culturalJealousyTargetId: nation.culturalJealousyTargetId,
         lastCityFoundedTurn: nation.lastCityFoundedTurn,
@@ -314,6 +318,8 @@ export class SaveLoadService {
       queuedDestination: unit.queuedDestination ? { ...unit.queuedDestination } : undefined,
       improvementCharges: unit.improvementCharges,
       airBase: unit.airBase ? { ...unit.airBase } : undefined,
+      missileLaunchPad: unit.missileLaunchPad ? { ...unit.missileLaunchPad } : undefined,
+      nuclearArmed: unit.nuclearArmed,
       carriedByUnitId: unit.carriedByUnitId,
       cargoUnitIds: [...unit.cargoUnitIds],
       isSleeping: unit.isSleeping,
@@ -895,6 +901,7 @@ export class SaveLoadService {
       nation.currentCultureNodeId = saved.currentCultureNodeId;
       nation.cultureProgress = saved.cultureProgress ?? 0;
       nation.settlersProduced = Math.max(0, Math.floor(saved.settlersProduced ?? 0));
+      nation.nuclearWarheads = normalizeNuclearWarheads(saved.nuclearWarheads);
       nation.aiVictoryFocus = saved.aiVictoryFocus ? { ...saved.aiVictoryFocus } : undefined;
       nation.culturalJealousyTargetId = saved.culturalJealousyTargetId;
       nation.lastCityFoundedTurn = saved.lastCityFoundedTurn;
@@ -920,6 +927,7 @@ export class SaveLoadService {
     cityManager.clearAllSilently();
     productionSystem.clearAllQueues();
     const cityTerritorySystem = new CityTerritorySystem(getGameSpeedById(gameSpeedId), gridSystem);
+    const buildingPlacementSystem = new BuildingPlacementSystem();
 
     for (const saved of cities) {
       if (!saved.urbanDevelopment || saved.urbanDevelopment.requirements.length !== 6
@@ -1000,13 +1008,32 @@ export class SaveLoadService {
           }
           continue;
         }
-        queueEntries.push({
+        const restoredEntry: QueueEntry = {
           item: producible,
           accumulated: entry.accumulated,
           lockedProductionCost: entry.lockedProductionCost,
           blockedReason: entry.blockedReason,
           placement: entry.placement ? { ...entry.placement } : undefined,
-        });
+        };
+        if (producible.kind === 'building' && producible.buildingType.id === MISSILE_LAUNCH_PAD_ID) {
+          // Old city-only silos had no physical reservation. Keep paid work and
+          // the locked price while migrating their destination to valid land.
+          const reserved = buildingPlacementSystem.findReservedTile(city.id, MISSILE_LAUNCH_PAD_ID, mapData);
+          const destination = reserved ?? (entry.placement ? mapData.tiles[entry.placement.tileY]?.[entry.placement.tileX] : undefined);
+          const construction = destination?.buildingConstruction;
+          if (reserved) reserved.buildingConstruction = undefined;
+          const validDestination = destination && buildingPlacementSystem.getValidPlacementCoords(city, producible.buildingType, mapData)
+            .some(coord => coord.x === destination.x && coord.y === destination.y);
+          if (validDestination) {
+            destination.buildingConstruction = construction ?? { buildingId: MISSILE_LAUNCH_PAD_ID, cityId: city.id };
+            restoredEntry.placement = { tileX: destination.x, tileY: destination.y };
+          } else {
+            restoredEntry.placement = buildingPlacementSystem.reserveFirstValidPlacement(city, producible.buildingType, mapData);
+          }
+          restoredEntry.blockedReason = restoredEntry.placement ? undefined
+            : 'Missile Launch Pad needs an empty owned land tile outside the city center';
+        }
+        queueEntries.push(restoredEntry);
         if (producible.kind === 'wonder' && entry.placement) {
           const tile = mapData.tiles[entry.placement.tileY]?.[entry.placement.tileX];
           if (tile && tile.wonderId === undefined) {
@@ -1045,6 +1072,8 @@ export class SaveLoadService {
         queuedDestination: saved.queuedDestination,
         improvementCharges: saved.improvementCharges,
         airBase: saved.airBase,
+        missileLaunchPad: saved.missileLaunchPad ? { ...saved.missileLaunchPad } : undefined,
+        nuclearArmed: saved.nuclearArmed ?? false,
         carriedByUnitId: saved.carriedByUnitId ?? saved.transportId,
         cargoUnitIds: saved.cargoUnitIds,
         isSleeping: saved.isSleeping,
@@ -1210,6 +1239,8 @@ function toSavedProducible(item: Producible): SavedProducible {
       return { kind: 'corporation', id: item.corporationType.id };
     case 'manufacturedResource':
       return { kind: 'manufacturedResource', id: item.productionType.id };
+    case 'strategicComponent':
+      return { kind: 'strategicComponent', id: item.componentType.id };
     case 'project':
       return { kind: 'project', id: item.projectType.id };
     case 'tradeRoute':
@@ -1268,6 +1299,10 @@ function fromSavedProducible(
       return null;
     }
     return { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION };
+  }
+  if (item.kind === 'strategicComponent') {
+    const componentType = getStrategicComponentById(item.id);
+    return componentType ? { kind: 'strategicComponent', componentType } : null;
   }
   if (item.kind === 'project') {
     const project = getProjectById(item.id);

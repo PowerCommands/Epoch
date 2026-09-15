@@ -623,6 +623,13 @@ export class CityBannerRenderer {
       };
     }
 
+    if (production.kind === 'strategicComponent') {
+      return {
+        textureKey: this.ensureProductionTexture('strategicComponent', production.componentType.id, getProjectSpritePath(production.componentType.id)),
+        fallbackLabel: getAbbreviation(production.componentType.name),
+      };
+    }
+
     const textureKey = this.ensureProductionTexture(
       'building',
       production.buildingType.id,
@@ -743,6 +750,7 @@ function getKindLabel(kind: Producible['kind']): string {
     case 'wonder': return 'Wonder';
     case 'corporation': return 'Corporation';
     case 'manufacturedResource': return 'Manufactured Resource';
+    case 'strategicComponent': return 'Strategic Component';
     case 'project': return 'Project';
     case 'tradeRoute': return 'Trade Route';
   }
@@ -755,6 +763,7 @@ function getItemName(item: Producible): string {
     case 'wonder': return item.wonderType.name;
     case 'corporation': return item.corporationType.name;
     case 'manufacturedResource': return item.productionType.name;
+    case 'strategicComponent': return item.componentType.name;
     case 'project': return item.projectType.name;
     case 'tradeRoute': return item.displayName;
   }

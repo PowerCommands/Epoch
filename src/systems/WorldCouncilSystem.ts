@@ -80,7 +80,7 @@ export type WorldCouncilTradeResourceCategory = 'luxury' | 'strategic' | 'bonus'
 const MINIMUM_COUNCIL_SCIENCE_PERCENT = 1;
 const MINIMUM_COUNCIL_CULTURE_PERCENT = 1;
 const NON_STANDARD_WORLD_COUNCIL_NATION_IDS = new Set(['nation_pirate']);
-const NUCLEAR_NON_PROLIFERATION_UNIT_IDS = new Set(['atomic_bomb', 'nuclear_missile']);
+const NUCLEAR_NON_PROLIFERATION_PRODUCTION_IDS = new Set(['atomic_bomb', 'nuclear_missile', 'nuclear_warhead']);
 const NUCLEAR_NON_PROLIFERATION_BLOCK_REASON =
   'Production prohibited by the United Nations Nuclear Non-Proliferation Treaty.';
 const RECENT_RESOLUTION_MEMORY_TURNS = 160;
@@ -241,8 +241,16 @@ export class WorldCouncilSystem {
   }
 
   getUnitProductionRestrictionReason(nationId: string, unitTypeId: string): string | undefined {
+    return this.getNuclearProductionRestrictionReason(nationId, unitTypeId);
+  }
+
+  getStrategicComponentProductionRestrictionReason(nationId: string, componentId: string): string | undefined {
+    return this.getNuclearProductionRestrictionReason(nationId, componentId);
+  }
+
+  private getNuclearProductionRestrictionReason(nationId: string, productionId: string): string | undefined {
     if (!this.state || this.state.organizationKind !== 'un') return undefined;
-    if (!NUCLEAR_NON_PROLIFERATION_UNIT_IDS.has(unitTypeId)) return undefined;
+    if (!NUCLEAR_NON_PROLIFERATION_PRODUCTION_IDS.has(productionId)) return undefined;
     if (!this.isMember(nationId)) return undefined;
     const treatyActive = this.state.enactedResolutions.some((resolution) =>
       resolution.resolutionId === 'nuclear_non_proliferation_treaty'

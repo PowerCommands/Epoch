@@ -229,6 +229,7 @@ export const JET_FIGHTER = unit({ id: 'jet_fighter', aircraftRole: 'fighter', na
 export const STEALTH_BOMBER = unit({ id: 'stealth_bomber', aircraftRole: 'bomber', cargoCapacity: 1, allowedCargoUnitIds: ['atomic_bomb'], description: `Carries one Atomic Bomb. Select Nuclear Payload to drop a radius ${STRATEGIC_WEAPONS.atomic_bomb.radius} nuclear blast.`, canTraverseWater: true, ignoresUnitCollision: true, name: 'Stealth Bomber', era: 'information', cost: 425, combatStrength: 0, rangedStrength: 85, range: 20, movement: 2, category: 'air', requiredResource: { resourceId: 'aluminum', amount: 1 }, upkeepGold: 15 });
 export const GUIDED_MISSILE = unit({ id: 'guided_missile', ignoresUnitCollision: true, description: describeStrategicWeapon('guided_missile'), name: 'Guided Missile', era: 'information', cost: 150, combatStrength: 0, rangedStrength: 60, range: 8, movement: 2, category: 'air', upkeepGold: 30, foodUpkeep: 0 }); // Stored one-shot ordnance, not standing forces
 export const NUCLEAR_MISSILE = unit({ id: 'nuclear_missile', ignoresUnitCollision: true, description: describeStrategicWeapon('nuclear_missile'), name: 'Nuclear Missile', era: 'information', cost: 1000, combatStrength: 0, range: 12, movement: 2, category: 'air', requiredResource: { resourceId: 'uranium', amount: 1 }, upkeepGold: 30 });
+export const ICBM = unit({ id: 'icbm', ignoresUnitCollision: true, description: describeStrategicWeapon('icbm'), name: 'ICBM', era: 'information', cost: 450, combatStrength: 0, range: 0, movement: 1, category: 'air', upkeepGold: 15, foodUpkeep: 0 });
 export const XCOM_SQUAD = unit({ id: 'xcom_squad', name: 'XCOM Squad', era: 'information', cost: 400, combatStrength: 100, movement: 2, category: 'melee', upkeepGold: 9 });
 export const GIANT_DEATH_ROBOT = unit({ id: 'giant_death_robot', name: 'Giant Death Robot', era: 'information', cost: 425, combatStrength: 150, movement: 5, category: 'mounted', upkeepGold: 30 });
 export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Cruiser', era: 'information', cost: 425, combatStrength: 83, rangedStrength: 100, range: 13, movement: 7, category: 'naval_ranged', isNaval: true, upkeepGold: 15, foodUpkeep: 3 }); // raised: top-tier naval ranged should match battleship/carrier tier, 9→15. High food upkeep: major capital ship
@@ -281,7 +282,7 @@ export const ALL_UNIT_TYPES: UnitType[] = [
   GREAT_WAR_INFANTRY, LANDSHIP, MACHINE_GUN, TRIPLANE, GREAT_WAR_BOMBER, DESTROYER, SUBMARINE, BATTLESHIP, CARRIER,
   INFANTRY, ANTI_AIRCRAFT_GUN, PARATROOPER, TANK, FIGHTER, BOMBER, ANTI_TANK_GUN, ROCKET_ARTILLERY, MOBILE_SAM,
   NUCLEAR_SUBMARINE, ATOMIC_BOMB, HELICOPTER_GUNSHIP, BAZOOKA,
-  MECHANIZED_INFANTRY, MODERN_ARMOR, JET_FIGHTER, STEALTH_BOMBER, GUIDED_MISSILE, NUCLEAR_MISSILE, XCOM_SQUAD,
+  MECHANIZED_INFANTRY, MODERN_ARMOR, JET_FIGHTER, STEALTH_BOMBER, GUIDED_MISSILE, NUCLEAR_MISSILE, ICBM, XCOM_SQUAD,
   GIANT_DEATH_ROBOT, MISSILE_CRUISER,
   WORKER, SETTLER, SURVEYOR, TRANSPORT_SHIP,
   SPY, AGENT, REBELS, PARTISANS,

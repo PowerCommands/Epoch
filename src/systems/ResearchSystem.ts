@@ -239,6 +239,16 @@ export class ResearchSystem {
     );
   }
 
+  getRequiredTechnologyForStrategicComponent(componentId: string): Technology | undefined {
+    return ALL_TECHNOLOGIES.find(technology =>
+      technology.unlocks.some(unlock => unlock.kind === 'strategicComponent' && unlock.id === componentId));
+  }
+
+  isStrategicComponentUnlocked(nationId: string, componentId: string): boolean {
+    const technology = this.getRequiredTechnologyForStrategicComponent(componentId);
+    return technology ? this.isResearched(nationId, technology.id) : false;
+  }
+
   isImprovementUnlocked(nationId: string, improvementId: string): boolean {
     const requiredTechnology = this.getRequiredTechnologyForImprovement(improvementId);
     if (!requiredTechnology) return true;

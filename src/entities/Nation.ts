@@ -6,6 +6,7 @@ import type { CovertPersonalityId } from '../types/covertPersonality';
 import { DEFAULT_COVERT_PERSONALITY_ID } from '../data/covertPersonalities';
 import type { OverseasSettlementTarget } from '../types/ai/OverseasSettlementTarget';
 import type { AIVictoryFocusState } from '../types/aiVictoryFocus';
+import { normalizeNuclearWarheads } from '../data/strategicComponents';
 
 export interface NationConfig {
   id: string;
@@ -25,6 +26,7 @@ export interface NationConfig {
   currentCultureNodeId?: string;
   cultureProgress?: number;
   settlersProduced?: number;
+  nuclearWarheads?: number;
   aiVictoryFocus?: AIVictoryFocusState;
   culturalJealousyTargetId?: string;
   lastCityFoundedTurn?: number;
@@ -58,6 +60,8 @@ export class Nation {
   cultureProgress: number;
   /** Historical Settlers completed through city production. */
   settlersProduced: number;
+  /** Unmounted Nuclear Warheads available to arm conventional ICBMs. */
+  nuclearWarheads: number;
   aiVictoryFocus?: AIVictoryFocusState;
   /**
    * Active Cultural Jealousy agenda target (the current cultural leader this
@@ -93,6 +97,7 @@ export class Nation {
     this.currentCultureNodeId = config.currentCultureNodeId;
     this.cultureProgress = config.cultureProgress ?? 0;
     this.settlersProduced = Math.max(0, Math.floor(config.settlersProduced ?? 0));
+    this.nuclearWarheads = normalizeNuclearWarheads(config.nuclearWarheads);
     this.aiVictoryFocus = config.aiVictoryFocus ? { ...config.aiVictoryFocus } : undefined;
     this.culturalJealousyTargetId = config.culturalJealousyTargetId;
     this.lastCityFoundedTurn = config.lastCityFoundedTurn;

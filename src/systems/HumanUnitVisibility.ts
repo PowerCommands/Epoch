@@ -45,6 +45,7 @@ export function canRenderUnitToHuman(
   revealCovertUnits = false,
   staticDetectors: readonly CovertDetectionSource[] = [],
 ): boolean {
+  if (unit.missileLaunchPad && unit.ownerId !== humanNationId) return false;
   if (revealCovertUnits && unit.unitType.covertDetectable === true) return true;
   return mapVisible && passesHumanCovertDetection(
     unit, humanNationId, humanUnits, gridSystem, staticDetectors,
