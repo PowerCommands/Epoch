@@ -287,3 +287,26 @@ test('exhausted missile keeps a disabled Launch control with a next-turn explana
   h.units.resetMovementForOwner('a');
   assert.equal(toolbox.getHudActions().find(a => a.mode === 'ranged')?.isAvailable, true);
 });
+
+test('presentation receives copied launch origin and resolved damage without playback callbacks', () => {
+  const h = harness(); const target = h.city();
+  const submarine = h.unit(NUCLEAR_SUBMARINE, 'a', 7, 10);
+  const missile = h.unit(NUCLEAR_MISSILE, 'a', 7, 10);
+  h.units.boardUnit(missile.id, submarine.id, 0);
+  let calls = 0;
+  const unsubscribe = h.system.onDetonation(event => {
+    calls++;
+    assert.deepEqual(event.origin, { x: 7, y: 10 });
+    assert.equal(event.radius, 4);
+    assert.equal(event.platform, 'nuclear_submarine');
+    assert.equal(h.units.getUnit(missile.id), undefined);
+    assert.equal(h.units.getUnit(submarine.id), undefined, 'origin survives loss of the launch platform');
+    assert.equal(target.health, 160);
+    assert.equal(h.map.tiles[10][10].type, TileType.NuclearWaste);
+  });
+  assert.equal(h.system.launch(missile, 10, 10), true);
+  assert.equal(calls, 1);
+  unsubscribe();
+  h.system.meltdown('a', 10, 10);
+  assert.equal(calls, 1, 'scene shutdown can detach its presentation listener');
+});

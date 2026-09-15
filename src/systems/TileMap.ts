@@ -39,6 +39,21 @@ export class TileMap {
     this.scene.events.emit('terrain-rebuilt');
   }
 
+  /** Temporary copy of the currently drawn terrain, owned by the caller.
+   * Lets combat presentation cover an immediate mechanical terrain change. */
+  captureTerrain(rect: TileRect): Phaser.GameObjects.RenderTexture {
+    const copy = this.scene.add.existing(new Phaser.GameObjects.RenderTexture(
+      this.scene, rect.x, rect.y, Math.ceil(rect.width), Math.ceil(rect.height), false,
+    )).setOrigin(0, 0).setDepth(TERRAIN_DEPTH + 0.1);
+    for (const chunk of this.bakedTextures) {
+      if (chunk.x + chunk.width < rect.x || chunk.x > rect.x + rect.width
+        || chunk.y + chunk.height < rect.y || chunk.y > rect.y + rect.height) continue;
+      copy.draw(chunk, chunk.x - rect.x, chunk.y - rect.y);
+    }
+    copy.render();
+    return copy;
+  }
+
   /** Kartans totala pixelstorlek i världskoordinater. */
   getWorldBounds(): { width: number; height: number } {
     return this.layout.getWorldBounds(this.data);

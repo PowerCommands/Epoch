@@ -9,6 +9,8 @@ import type { IGridSystem } from './grid/IGridSystem';
 import type { DiplomacyManager } from './DiplomacyManager';
 
 export interface StrategicDetonation {
+  /** Presentation-only launch coordinates, copied before ordnance/cargo removal. */
+  origin?: { x: number; y: number };
   accident?: boolean;
   radius?: number;
   nationId: string;
@@ -46,7 +48,10 @@ export class StrategicWeaponsSystem {
     private readonly map: MapData, private readonly grid: IGridSystem,
     private readonly diplomacy?: DiplomacyManager, private readonly getRound: () => number = () => 1) {}
 
-  onDetonation(listener: (event: StrategicDetonation) => void): void { this.listeners.push(listener); }
+  onDetonation(listener: (event: StrategicDetonation) => void): () => void {
+    this.listeners.push(listener);
+    return () => { this.listeners = this.listeners.filter(entry => entry !== listener); };
+  }
 
   getLaunchFailure(weapon: Unit, x: number, y: number): string | undefined {
     const config = STRATEGIC_WEAPONS[weapon.unitType.id];
@@ -86,6 +91,7 @@ export class StrategicWeaponsSystem {
     const tiles = this.getTiles(config, x, y);
     const carrier = this.units.getTransportForUnit(weapon);
     const event: StrategicDetonation = { nationId: weapon.ownerId, weaponId: weapon.unitType.id,
+      origin: { x: (carrier ?? weapon).tileX, y: (carrier ?? weapon).tileY }, radius: config.radius,
       platform: carrier?.unitType.id ?? (config.landLaunch === 'silo' ? 'nuclear_silo' : 'land'),
       target: { x, y }, nuclear: config.nuclear, victimNationIds: this.getVictims(tiles, weapon.ownerId),
       tiles: tiles.length, unitsDestroyed: 0, contaminatedTiles: 0 };

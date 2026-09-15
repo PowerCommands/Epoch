@@ -11,6 +11,7 @@ import { getExplorationVisionRadius } from '../systems/VisibilitySystem';
 import { DiplomaticAffairSystem } from '../systems/diplomacy/DiplomaticAffairSystem';
 import { nuclearPlantAtRisk, NUCLEAR_PLANT_MELTDOWN_CHANCE, NUCLEAR_PLANT_RISK_FRACTION } from '../data/nuclearPlants';
 import { AirMissionRenderer } from '../renderers/AirMissionRenderer';
+import { NuclearStrikeRenderer } from '../renderers/NuclearStrikeRenderer';
 import { AirBaseRenderer } from '../renderers/AirBaseRenderer';
 import { interceptionProfile } from '../data/airOperations';
 import { getNuclearCapability } from '../systems/ai/AIStrategicWeapons';
@@ -6673,6 +6674,8 @@ export class GameScene extends Phaser.Scene {
     // separately with alliance context, so the generic line is skipped).
     let allianceWarSystem: AllianceWarSystem | null = null;
     new AirMissionRenderer(this, tileMap, combatSystem.airOperations, () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile);
+    // Subscribe before terrain refresh: preserve the old terrain during missile flight.
+    new NuclearStrikeRenderer(this, tileMap, combatSystem.strategicWeapons, () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile);
     airBaseRenderer = new AirBaseRenderer(this, tileMap, combatSystem.airOperations, unitManager, cityManager, selectionManager, canSeeTile);
     combatSystem.strategicWeapons.onDetonation(event => {
       logManager.info({ nationId: event.nationId, category: 'combat', message: `[Strategic] ${JSON.stringify(event)}` });
