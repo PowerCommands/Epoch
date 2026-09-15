@@ -8,7 +8,8 @@ export function metropolisLayout(land: CityPoint[][], size: number) {
     towers: [{x:-.30*size,y:-.18*size},{x:-.16*size,y:-.21*size}],
     signs: [{x:.08*size,y:-.40*size},{x:.34*size,y:-.53*size},{x:-.35*size,y:.16*size}] };
 }
-export function drawMetropolis(ctx: CanvasRenderingContext2D, land: CityPoint[][], size: number): CityArtwork {
+export function drawMetropolis(ctx: CanvasRenderingContext2D, land: CityPoint[][], size: number, damaged = false): CityArtwork {
+  const fires: CityPoint[] = [];
   const layout=metropolisLayout(land,size), polygons=land.map(poly=>poly.map(p=>({x:p.x/size,y:p.y/size})));
   const inside=(x:number,y:number)=>polygons.some(poly=>cityContains(poly,{x,y}));
   ctx.save();ctx.scale(size,size);
@@ -25,11 +26,24 @@ export function drawMetropolis(ctx: CanvasRenderingContext2D, land: CityPoint[][
   ctx.fillStyle='#36404b';ctx.fillRect(left,ry-.038,width,.075);
   ctx.fillStyle='#f2ecbc';for(let x=left+.03;x<left+width-.03;x+=.10)ctx.fillRect(x,ry-.004,.05,.008);
   ctx.restore();
+  let buildingIndex = 0;
   const box=(x:number,y:number,w:number,h:number,color:string)=>{
+    const ruined = damaged && buildingIndex++ % 3 !== 1;
+    if (ruined) { h *= .55; color = '#566063'; }
     ctx.fillStyle='#273c4a';ctx.beginPath();ctx.moveTo(x+w,y);ctx.lineTo(x+w+.035,y-.035);ctx.lineTo(x+w+.035,y-h-.035);ctx.lineTo(x+w,y-h);ctx.closePath();ctx.fill();
     ctx.fillStyle=color;ctx.fillRect(x,y-h,w,h);
     ctx.fillStyle='#c4d9db';ctx.beginPath();ctx.moveTo(x,y-h);ctx.lineTo(x+.035,y-h-.035);ctx.lineTo(x+w+.035,y-h-.035);ctx.lineTo(x+w,y-h);ctx.closePath();ctx.fill();
     for(let yy=y-h+.025;yy<y-.012;yy+=.033)for(let xx=x+.013;xx<x+w-.01;xx+=.026){ctx.fillStyle=(Math.round((xx+yy)*100)%3)?'#99cad5':'#ffe4a0';ctx.fillRect(xx,yy,.012,.016);}
+    if (ruined) {
+      ctx.fillStyle='#242d31';ctx.beginPath();
+      ctx.moveTo(x,y-h);ctx.lineTo(x+w*.22,y-h*.78);ctx.lineTo(x+w*.4,y-h*.98);
+      ctx.lineTo(x+w*.65,y-h*.6);ctx.lineTo(x+w,y-h*.86);ctx.lineTo(x+w,y-h);ctx.closePath();ctx.fill();
+      ctx.fillStyle='#252a2b';ctx.fillRect(x+w*.23,y-h*.65,w*.48,h*.52);
+      ctx.strokeStyle='#9b9c91';ctx.lineWidth=.007;
+      for(let yy=y-h*.65;yy<y-.02;yy+=.04){ctx.beginPath();ctx.moveTo(x+w*.22,yy);ctx.lineTo(x+w*.75,yy+.015);ctx.stroke();}
+      for(let j=0;j<7;j++){ctx.fillStyle=j%2?'#afb0a4':'#4b5151';ctx.fillRect(x-.02+j*w/6,y-.005+(j%2)*.014,.023,.014);}
+      fires.push({x:(x+w*.5)*size,y:(y-h*.35)*size});
+    }
   };
   // Dense skyline: broad glass office slabs, stepped crowns and slim spires.
   let index=0;
@@ -39,7 +53,7 @@ export function drawMetropolis(ctx: CanvasRenderingContext2D, land: CityPoint[][
     if(y>.10&&y<.34 || Math.abs(y-ry)<.14 || (x>-.49&&x<.57&&y>-.42&&y<.12))continue;
     const h=y<-.35?.25+(Math.sin(index*13.7)+1)*.21:.15+(index%4)*.040;
     box(x,y,.105+(index%2)*.02,h,['#4e7788','#527083','#698a95','#425c74'][index%4]);
-    if(h>.52){box(x+.027,y-h,.05,.06,'#759ca7');ctx.strokeStyle='#dbe3dd';ctx.lineWidth=.006;ctx.beginPath();ctx.moveTo(x+.055,y-h-.06);ctx.lineTo(x+.055,y-h-.16);ctx.stroke();}
+    if(h>.52 && !damaged){box(x+.027,y-h,.05,.06,'#759ca7');ctx.strokeStyle='#dbe3dd';ctx.lineWidth=.006;ctx.beginPath();ctx.moveTo(x+.055,y-h-.06);ctx.lineTo(x+.055,y-h-.16);ctx.stroke();}
   }
   // Nuclear generation campus with hyperboloid cooling towers and dark open rims.
   box(-.44,-.07,.13,.10,'#9aa9aa');
@@ -55,7 +69,7 @@ export function drawMetropolis(ctx: CanvasRenderingContext2D, land: CityPoint[][
   box(left+.025,ry-.07,.04,.15,'#799399');
   for(let i=0;i<3;i++){ctx.fillStyle='#d1d9d6';ctx.fillRect(left+.10+i*.075,ry-.055,.012,.04);}
   for(const sign of layout.signs){const x=sign.x/size,y=sign.y/size;ctx.fillStyle='#162b40';ctx.fillRect(x-.07,y-.026,.15,.06);ctx.fillStyle='#5af1e3';ctx.fillRect(x-.062,y-.019,.134,.042);ctx.fillStyle='#223c62';ctx.font='bold 0.026px sans-serif';ctx.fillText('EPOCH',x-.052,y+.012,.12);}
-  ctx.restore();return {smoke:[],engines:[],occluders:[]};
+  ctx.restore();return {smoke:[],engines:[],occluders:[],fires};
 }
 
 /** One bounded batch: no actors, timers, simulation or gameplay side effects. */

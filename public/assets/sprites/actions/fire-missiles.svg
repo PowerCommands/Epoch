@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="red" cx="35%" cy="25%" r="80%"><stop stop-color="#f74935"/><stop offset=".55" stop-color="#cc1109"/><stop offset="1" stop-color="#790500"/></radialGradient>
+    <linearGradient id="rim" x2="0" y2="1"><stop stop-color="#fff6df"/><stop offset=".5" stop-color="#aeada5"/><stop offset="1" stop-color="#f5e7cb"/></linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#rim)" stroke="#5d666b" stroke-width="2"/>
+  <circle cx="64" cy="64" r="56" fill="url(#red)" stroke="#fff2d8" stroke-width="2"/>
+  <path d="M24 35a48 48 0 0 1 77-6" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="3" stroke-linecap="round"/>
+  <!-- Missiles point up and right; exhaust flames make the firing action explicit. -->
+  <g transform="rotate(42 64 64)" stroke-linejoin="round">
+    <path d="M48 82l-5 25 10-8 5 8 1-25m23-8-4 23 8-7 5 7 1-23" fill="#ffbd44" stroke="#fff0bb" stroke-width="2"/>
+    <g fill="#fff5d9" stroke="#fff5d9" stroke-width="2">
+      <path d="M53 18c-6 7-8 14-8 22v24l-9 15v7l12-6h10l12 6v-7l-9-15V40c0-8-2-15-8-22z"/>
+      <path d="M86 26c-5 6-7 12-7 19v15l-7 13v6l10-5h8l10 5v-6l-7-13V45c0-7-2-13-7-19z"/>
+    </g>
+    <path d="M46 41h14m20 5h12" stroke="#bd3924" stroke-width="4"/>
+    <path d="M49 49v19m34-15v11" stroke="#bd3924" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -9,6 +9,7 @@ import { isPointerEventConsumed } from '../utils/phaserScreenSpaceUi';
 import type { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
 import type { Tile } from '../types/map';
+import { getTileOccupants } from './TileOccupants';
 
 type SelectionCallback = (selection: Selectable | null) => void;
 /**
@@ -149,6 +150,36 @@ export class SelectionManager {
     this.setSelection({ kind: 'unit', unit });
   }
 
+  private getSelectableUnitsAt(x: number, y: number): Unit[] {
+    if (!this.isTileExplored(x, y) || !this.isTileVisible(x, y)) return [];
+    return getTileOccupants(this.unitManager, x, y)
+      .map(({ unit }) => unit).filter((unit) => this.isUnitVisible(unit));
+  }
+
+  private getSelectedTileUnits(): Unit[] {
+    const selection = this.selected;
+    if (!selection) return [];
+    if (selection.kind === 'tile') return this.getSelectableUnitsAt(selection.tile.x, selection.tile.y);
+    const entity = selection.kind === 'city' ? selection.city : selection.unit;
+    return this.getSelectableUnitsAt(entity.tileX, entity.tileY);
+  }
+
+  canCycleUnits(): boolean {
+    return this.getSelectedTileUnits().length >= 2;
+  }
+
+  /** Select adjacent occupants without issuing orders, wrapping at either end. */
+  cycleUnits(direction: -1 | 1): boolean {
+    const units = this.getSelectedTileUnits();
+    if (units.length < 2) return false;
+    const selected = this.selected;
+    const index = selected?.kind === 'unit' ? units.findIndex(unit => unit.id === selected.unit.id) : -1;
+    const next = index < 0 ? (direction === 1 ? 0 : units.length - 1)
+      : (index + direction + units.length) % units.length;
+    this.selectUnit(units[next]);
+    return true;
+  }
+
   /** Remove hover/selection state that became hidden after units moved. */
   refreshVisibility(): void {
     if (this.hovered?.kind === 'unit' && !this.isUnitVisible(this.hovered.unit)) {
@@ -192,14 +223,7 @@ export class SelectionManager {
       return { kind: 'tile', tile };
     }
 
-    const nonCargo = this.unitManager.getUnitsAt(tile.x, tile.y);
-    const cargo: Unit[] = [];
-    for (const transport of nonCargo) {
-      if (transport.cargoUnitIds.length > 0) {
-        cargo.push(...this.unitManager.getCargoUnitsForTransport(transport));
-      }
-    }
-    const units = [...nonCargo, ...cargo].filter((unit) => this.isUnitVisible(unit));
+    const units = this.getSelectableUnitsAt(tile.x, tile.y);
     if (units.length > 0) {
       if (this.selected?.kind === 'unit') {
         const selectedUnitId = this.selected.unit.id;

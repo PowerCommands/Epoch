@@ -2,8 +2,7 @@ import { getSettlementStage } from './UrbanDevelopment';
 import { UrbanCityVisual } from './rendering/UrbanCityVisual';
 import { AmbientSprites } from './rendering/AmbientSprites';
 import Phaser from 'phaser';
-import { StructureDamageEffects } from '../renderers/StructureDamageEffects';
-import { CITY_BASE_HEALTH } from '../data/cities';
+import { CityDamageEffects } from '../renderers/CityDamageEffects';
 import { TileMap } from './TileMap';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
@@ -33,7 +32,7 @@ export class CityRenderer {
   private readonly cityManager: CityManager;
   private readonly nationManager: NationManager;
   private readonly getNationEra: (nationId: string) => Era;
-  private readonly damageEffects: StructureDamageEffects;
+  private readonly damageEffects: CityDamageEffects;
   private readonly containers = new Map<string, Phaser.GameObjects.Container>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
   private readonly threatGlows = new Map<string, Phaser.GameObjects.Graphics>();
@@ -65,7 +64,7 @@ export class CityRenderer {
     this.nationManager = nationManager;
     this.getNationEra = getNationEra;
     this.hexTileMaskHelper = new HexTileMaskHelper(scene, tileMap);
-    this.damageEffects = new StructureDamageEffects(scene, tileMap, CITY_DEPTH + 0.1, (x, y) => this.visibilityPredicate(x, y));
+    this.damageEffects = new CityDamageEffects(scene, tileMap, (x, y) => this.visibilityPredicate(x, y));
 
     for (const city of cityManager.getAllCities()) {
       this.renderCity(city);
@@ -97,7 +96,6 @@ export class CityRenderer {
     this.refreshThreats();
     for (const city of this.cityManager.getAllCities()) {
       this.containers.get(city.id)?.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
-      this.damageEffects.set(city.id, city.tileX, city.tileY, city.health <= CITY_BASE_HEALTH / 2);
     }
   }
 
@@ -170,7 +168,7 @@ export class CityRenderer {
     const stage = getSettlementStage(this.cityManager.getBuildings(city.id), city);
     const developed = city.id !== this.detailCityId && stage !== 'Village';
     const sprite = developed ? this.urbanVisual.create(city, stage)
-      : this.scene.add.image(0, 0, getCitySpriteKey(this.getNationEra(city.ownerId), city.health <= CITY_BASE_HEALTH / 2));
+      : this.scene.add.image(0, 0, getCitySpriteKey(this.getNationEra(city.ownerId), city.isVisuallyDamaged));
     const scaleMultiplier = city.isResidenceCapital ? CAPITAL_SCALE_MULTIPLIER : 1;
     if (!developed) sprite.setDisplaySize(
       rect.width * CITY_TILE_FILL_SCALE * scaleMultiplier,
@@ -178,7 +176,7 @@ export class CityRenderer {
     );
     if (!developed) this.hexTileMaskHelper.applyHexMask(sprite, city.tileX, city.tileY);
     if (!developed) AmbientSprites.forScene(this.scene).attach(sprite, 'city', city.id, () => [city.tileX, city.tileY],
-      () => city.health > CITY_BASE_HEALTH / 2 && this.visibilityPredicate(city.tileX, city.tileY));
+      () => !city.isVisuallyDamaged && this.visibilityPredicate(city.tileX, city.tileY));
 
     const glow = this.scene.add.graphics();
     const outline = this.tileMap.getTileOutlinePoints(city.tileX, city.tileY)
@@ -205,6 +203,7 @@ export class CityRenderer {
     // Streets sit below units so movement and garrisons remain readable.
     container.setDepth(developed ? 14 : CITY_DEPTH);
     container.setData('settlementStage', stage);
+    container.setData('damaged', city.isVisuallyDamaged);
     if (developed) this.urbanVisual.attach(container, city, stage);
 
     // Interactive hit area — circle matching old behavior
@@ -216,7 +215,11 @@ export class CityRenderer {
 
     container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
     this.containers.set(city.id, container);
-    this.damageEffects.set(city.id, city.tileX, city.tileY, city.health <= CITY_BASE_HEALTH / 2);
+    this.damageEffects.set(city, developed ? sprite.getData('damageFires') : [
+      { x: -rect.width * .19, y: -rect.height * .04 },
+      { x: rect.width * .16, y: -rect.height * .16 },
+      { x: rect.width * .08, y: rect.height * .13 },
+    ], rect.width);
   }
 
   private createFortificationWall(

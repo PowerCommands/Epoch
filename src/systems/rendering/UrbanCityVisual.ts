@@ -18,7 +18,7 @@ const artworkByTexture = new WeakMap<Phaser.Textures.Texture, CityArtwork>();
  * animation loop. No actors, timers, pathfinding, or per-house display objects. */
 export class UrbanCityVisual {
   private readonly reducedMotion = typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-reduced-motion: reduce)');
-  private readonly live = new Map<Phaser.GameObjects.Container, CityArtwork & { ink: Phaser.GameObjects.Graphics; size: number; phase: number; land: Point[][]; waterfront: WaterfrontSector[]; industrial: boolean; metropolis: boolean; rail: ReturnType<typeof cityRailCorridor> }>();
+  private readonly live = new Map<Phaser.GameObjects.Container, CityArtwork & { city: City; ink: Phaser.GameObjects.Graphics; size: number; phase: number; land: Point[][]; waterfront: WaterfrontSector[]; industrial: boolean; metropolis: boolean; rail: ReturnType<typeof cityRailCorridor> }>();
   constructor(private readonly scene: Phaser.Scene, private readonly tileMap: TileMap) {
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.update, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -30,7 +30,7 @@ export class UrbanCityVisual {
   create(city: City, stage: SettlementStage = city.settlementStage): Phaser.GameObjects.Image {
     const origin = this.tileMap.tileToWorld(city.tileX, city.tileY);
     const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
-    const key = `urban-${stage}-${rect.width}-${rect.height}-${city.urbanDevelopment?.waterMask ?? 0}`;
+    const key = this.textureKey(city, stage);
     const width = Math.ceil(rect.width * 3 + 24);
     const height = Math.ceil(rect.height * 2.5 + 48);
     if (!this.scene.textures.exists(key)) {
@@ -44,13 +44,19 @@ export class UrbanCityVisual {
       const landCenters = centers.filter((_,i)=>i===0 || !getUrbanSlots(city)[i-1].water);
       const polygons = landCenters.map(c => this.tileMap.getTileOutlinePoints(c.x, c.y)
         .map(p => ({ x: p.x - origin.x, y: p.y - origin.y })));
-      artworkByTexture.set(texture, stage === 'Metropolis' ? drawMetropolis(ctx, polygons, unit) : drawOrganicCity(ctx, polygons, unit, stage === 'City'));
+      artworkByTexture.set(texture, stage === 'Metropolis' ? drawMetropolis(ctx, polygons, unit, city.isVisuallyDamaged) : drawOrganicCity(ctx, polygons, unit, stage === 'City', city.isVisuallyDamaged));
       const waterfront = this.getWaterfront(city);
       drawUrbanShore(ctx, waterfront, polygons, unit);
       for (const sector of waterfront) drawWaterfrontSector(ctx, sector, unit);
       texture.refresh();
     }
-    return this.scene.add.image(0, 0, key).setDisplaySize(width, height).setData('urbanCity', true);
+    return this.scene.add.image(0, 0, key).setDisplaySize(width, height).setData('urbanCity', true)
+      .setData('damageFires', artworkByTexture.get(this.scene.textures.get(key))?.fires ?? []);
+  }
+
+  private textureKey(city: City, stage: SettlementStage): string {
+    const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
+    return `urban-${stage}-${rect.width}-${rect.height}-${city.urbanDevelopment?.waterMask ?? 0}${city.isVisuallyDamaged ? '-broken' : ''}`;
   }
 
   private getWaterfront(city: City): WaterfrontSector[] {
@@ -70,19 +76,20 @@ export class UrbanCityVisual {
     const land=[{x:city.tileX,y:city.tileY},...getUrbanSlots(city).filter(s=>!s.water)].map(s=>this.tileMap.getTileOutlinePoints(s.x,s.y)
       .map(p=>({x:p.x-origin.x,y:p.y-origin.y})));
     const rect=this.tileMap.getTileRect(city.tileX,city.tileY);
-    const key=`urban-${stage}-${rect.width}-${rect.height}-${city.urbanDevelopment?.waterMask ?? 0}`;
+    const key=this.textureKey(city, stage);
     const artwork=artworkByTexture.get(this.scene.textures.get(key));
-    this.live.set(container, { ink, land, industrial: stage === 'City', metropolis: stage === 'Metropolis', rail:cityRailCorridor(land,rect.width), smoke:artwork?.smoke ?? [], engines:artwork?.engines ?? [], occluders:artwork?.occluders ?? [], waterfront: this.getWaterfront(city), size: rect.width, phase });
+    this.live.set(container, { city, ink, land, industrial: stage === 'City', metropolis: stage === 'Metropolis', rail:cityRailCorridor(land,rect.width), smoke:artwork?.smoke ?? [], engines:artwork?.engines ?? [], occluders:artwork?.occluders ?? [], waterfront: this.getWaterfront(city), size: rect.width, phase });
     container.once(Phaser.GameObjects.Events.DESTROY, () => this.live.delete(container));
   }
 
   private update(time: number): void {
     const view = this.scene.cameras.main.worldView;
     const animate = isMapAnimationsEnabled() && this.scene.cameras.main.zoom >= .45 && !this.reducedMotion?.matches;
-    for (const [container, {ink,size,phase,land,smoke,engines,occluders,waterfront,industrial,metropolis,rail}] of this.live) {
+    for (const [container, {city,ink,size,phase,land,smoke,engines,occluders,waterfront,industrial,metropolis,rail}] of this.live) {
       if (!container.visible || container.x+size*2<view.left || container.x-size*2>view.right
         || container.y+size*2<view.top || container.y-size*2>view.bottom) continue;
       ink.clear();
+      if (city.isVisuallyDamaged) continue;
       if (metropolis) {
         drawMetropolisActivity(ink,land,size,animate ? time+phase*50 : 0,phase);
         continue;

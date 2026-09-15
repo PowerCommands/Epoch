@@ -81,7 +81,8 @@ export class CombatAnimationSystem {
     defenderTileY: number,
     options: CombatAnimationOptions,
   ): Promise<void> {
-    if (this.autoplaySystem.isActive()) return;
+    // AirMissionRenderer owns the flyover and weapon timing for fixed-wing aircraft.
+    if (this.autoplaySystem.isActive() || attacker.unitType.aircraftRole) return;
 
     const attackerContainer = this.unitRenderer.getUnitContainer(attacker.id);
     if (!attackerContainer) return;

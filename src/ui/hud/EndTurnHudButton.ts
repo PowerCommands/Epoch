@@ -139,20 +139,20 @@ export class EndTurnHudButton {
   }
 
   /**
-   * Toggle the "AI is taking its turn" spinner. While busy, a ring around the
-   * button rotates continuously (an infinite Phaser tween); turning it off stops
-   * and hides it.
+   * Rotate the globe and its surrounding spinner throughout the AI turns.
+   * Restore the globe's resting orientation when the human player's turn starts.
    */
   setBusy(busy: boolean): void {
     if (this.busy === busy) return;
     this.busy = busy;
     this.spinTween?.remove();
     this.spinTween = null;
+    this.sprite.angle = 0;
     this.spinner.angle = 0;
     if (busy) {
       this.spinner.setVisible(true);
       this.spinTween = this.scene.tweens.add({
-        targets: this.spinner,
+        targets: [this.sprite, this.spinner],
         angle: 360,
         duration: SPINNER_DURATION_MS,
         repeat: -1,

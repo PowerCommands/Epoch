@@ -50,6 +50,7 @@ export class CameraController {
   private didDrag = false;
   private dragEnded = false;
   private pointerPanEnabled = true;
+  private horizontalArrowsCaptured: () => boolean = () => false;
   private dragStartX = 0;
   private dragStartY = 0;
   private camStartScrollX = 0;
@@ -172,6 +173,10 @@ export class CameraController {
       y: center.y - half.y, width: half.x * 2, height: half.y * 2 };
   }
 
+  setHorizontalArrowsCaptured(predicate: () => boolean): void {
+    this.horizontalArrowsCaptured = predicate;
+  }
+
   setPointerPanEnabled(enabled: boolean): void {
     this.pointerPanEnabled = enabled;
   }
@@ -195,8 +200,10 @@ export class CameraController {
     // konsekvent oavsett hur långt inzoomad spelaren är.
     const speed = (PAN_SPEED / this.cam.zoom) * (delta / 1000);
 
-    const moveLeft  = this.keys.left.isDown  || this.keys.a.isDown;
-    const moveRight = this.keys.right.isDown || this.keys.d.isDown;
+    const captureHorizontal = (this.keys.left.isDown || this.keys.right.isDown)
+      && this.horizontalArrowsCaptured();
+    const moveLeft  = (!captureHorizontal && this.keys.left.isDown) || this.keys.a.isDown;
+    const moveRight = (!captureHorizontal && this.keys.right.isDown) || this.keys.d.isDown;
     const moveUp    = this.keys.up.isDown    || this.keys.w.isDown;
     const moveDown  = this.keys.down.isDown  || this.keys.s.isDown;
 

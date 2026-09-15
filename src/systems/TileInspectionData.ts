@@ -3,7 +3,7 @@ import { getBuildingById } from '../data/buildings';
 import { getImprovementById } from '../data/improvements';
 import { getResourceDisplayName } from '../data/resources';
 import { getWonderById } from '../data/wonders';
-import type { Unit } from '../entities/Unit';
+import { getTileOccupants } from './TileOccupants';
 import type { City } from '../entities/City';
 import type { MapData } from '../types/map';
 import type { CityManager } from './CityManager';
@@ -160,28 +160,7 @@ export function buildTileInspection(
   sections.push({ heading: 'Territory', rows: territoryRows });
 
   // ── Units ─────────────────────────────────────────────────────────────────
-  // Cargo is deliberately absent from the collision/grid lookup. Air bases
-  // have their own authoritative occupancy, independent of that grid as well.
-  const occupants = new Map<string, { unit: Unit; location?: string }>();
-  const addUnit = (unit: Unit, location?: string): void => {
-    if (occupants.has(unit.id)) {
-      if (location) occupants.get(unit.id)!.location = location;
-      return;
-    }
-    occupants.set(unit.id, { unit, location });
-    for (const cargo of unitManager.getCargoUnitsForTransport(unit)) {
-      addUnit(cargo, `Aboard ${unit.name}`);
-    }
-  };
-  for (const unit of unitManager.getUnitsAt(x, y)) addUnit(unit);
-  const airOperations = unitManager.airOperations;
-  for (const site of airOperations?.allSites() ?? []) {
-    if (site.x !== x || site.y !== y) continue;
-    for (const aircraft of airOperations!.aircraftAt(site.base)) {
-      addUnit(aircraft, site.base.kind === 'carrier' ? `Aboard ${site.name}` : site.name);
-    }
-  }
-  const units: TileInspectionUnit[] = [...occupants.values()].map(({ unit, location }) => {
+  const units: TileInspectionUnit[] = getTileOccupants(unitManager, x, y).map(({ unit, location }) => {
     const nation = nationManager.getNation(unit.ownerId);
     const rows: TileInspectionRow[] = [
       { label: 'Type', value: unit.unitType.name },

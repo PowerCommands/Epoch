@@ -12,7 +12,7 @@ function toCssColor(color: number): string {
  * (terrain, territory + owning city, units, structures, city). Presentation
  * only: it renders a {@link TileInspectionInfo} prepared by
  * `buildTileInspection` and holds no gameplay logic. Opened via the `I` hotkey
- * while something is selected; primarily an inspection/debug aid.
+ * while something is selected. Unit portraits can request selection through a callback.
  */
 export class TileInspectorDialog {
   private readonly root: HTMLDivElement;
@@ -24,7 +24,7 @@ export class TileInspectorDialog {
   private dragOffsetY = 0;
   private hasPosition = false;
 
-  constructor() {
+  constructor(private readonly onSelectUnit?: (unitId: string) => boolean) {
     this.root = document.createElement('div');
     this.root.id = 'tile-inspector-dialog';
     this.root.style.cssText = `
@@ -83,6 +83,8 @@ export class TileInspectorDialog {
 
     const style = document.createElement('style');
     style.textContent = `
+      #tile-inspector-dialog .tile-unit-select:hover,
+      #tile-inspector-dialog .tile-unit-select:focus-visible { background: #30445b !important; outline: 2px solid #9fcaff; }
       @keyframes tile-unit-land { 50% { transform: translateY(-2px) scaleY(1.025); } }
       @keyframes tile-unit-sea { 50% { transform: translateY(-3px) rotate(2deg); } }
       @keyframes tile-unit-air { 50% { transform: translate(2px, -4px) rotate(-2deg); } }
@@ -115,6 +117,8 @@ export class TileInspectorDialog {
   }
 
   close(): void {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && this.root.contains(active)) active.blur();
     this.root.style.display = 'none';
     this.dragging = false;
   }
@@ -177,6 +181,22 @@ export class TileInspectorDialog {
     portrait.className = 'tile-unit-image';
     portrait.style.cssText = `width: 72px; height: 72px; object-fit: contain; flex: 0 0 auto;
       animation: tile-unit-${unit.motion} 2.8s ease-in-out infinite;`;
+    const portraitButton = document.createElement('button');
+    portraitButton.type = 'button';
+    portraitButton.className = 'tile-unit-select';
+    portraitButton.setAttribute('aria-label', `Select ${unit.name}`);
+    portraitButton.title = `Select ${unit.name} and close Information`;
+    portraitButton.disabled = !this.onSelectUnit;
+    portraitButton.style.cssText = 'padding: 0; border: 1px solid #64788f; border-radius: 6px; background: transparent; cursor: pointer; flex: 0 0 auto;';
+    for (const type of ['keydown', 'keyup'] as const) {
+      portraitButton.addEventListener(type, (event) => {
+        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+      });
+    }
+    portraitButton.append(portrait);
+    portraitButton.addEventListener('click', () => {
+      if (this.onSelectUnit?.(unit.id)) this.close();
+    });
     const details = document.createElement('div');
     details.style.cssText = 'flex: 1; min-width: 0;';
     const name = document.createElement('div');
@@ -197,7 +217,7 @@ export class TileInspectorDialog {
     fill.style.cssText = `height: 100%; width: ${ratio * 100}%; background: ${ratio > 0.5 ? '#79cc64' : ratio > 0.25 ? '#edbd54' : '#ee655f'};`;
     bar.append(fill);
     details.append(name, health, bar);
-    summary.append(portrait, details);
+    summary.append(portraitButton, details);
     card.append(summary);
     for (const row of unit.rows) card.append(this.createRow(row));
     return card;

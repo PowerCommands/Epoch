@@ -179,7 +179,7 @@ export class UnitActionHudToolbox {
 
       if (state) {
         button.state = state;
-        const iconKey = state.label.includes('Clean Nuclear Waste') ? 'action_clean_nuclear_waste' : ACTION_ICON_KEYS[state.mode];
+        const iconKey = state.iconKey ?? (state.label.includes('Clean Nuclear Waste') ? 'action_clean_nuclear_waste' : ACTION_ICON_KEYS[state.mode]);
         if (button.icon.texture.key !== iconKey) {
           button.icon.setTexture(iconKey);
         }

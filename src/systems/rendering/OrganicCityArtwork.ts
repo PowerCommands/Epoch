@@ -5,6 +5,7 @@ export interface CityArtwork {
   smoke: CityPoint[];
   engines: CityPoint[];
   occluders: CityOccluder[];
+  fires?: CityPoint[];
 }
 export interface CityOccluder {
   points: CityPoint[];
@@ -65,7 +66,8 @@ export function cityRailCorridor(land: CityPoint[][], size: number) {
 
 /** Baked material detail costs nothing in the animation loop. All positions and
  * factory outlets are deterministic, including when a coastal texture is reused. */
-export function drawOrganicCity(ctx: CanvasRenderingContext2D, land: CityPoint[][], size: number, industrial = false): CityArtwork {
+export function drawOrganicCity(ctx: CanvasRenderingContext2D, land: CityPoint[][], size: number, industrial = false, damaged = false): CityArtwork {
+  const fires: CityPoint[] = [];
   const smoke: CityPoint[] = [], engines: CityPoint[] = [];
   const occluders: CityOccluder[] = [];
   const polygons = land.map(poly => poly.map(p => ({x:p.x/size, y:p.y/size})));
@@ -185,14 +187,15 @@ export function drawOrganicCity(ctx: CanvasRenderingContext2D, land: CityPoint[]
       const u=x*c-y*s,v=x*s+y*c;
       return {x:b.x+u-v*.38,y:b.y+u*.18+v*.60-z};
     };
-    const w=b.w/2,d=b.d/2,h=b.h,r=b.w*(industrial?.24:.38);
+    const ruined = damaged && index % 3 !== 1;
+    const w=b.w/2,d=b.d/2,h=b.h*(ruined ? .52 : 1),r=b.w*(industrial?.24:.38);
     // Street traffic behind a baked roof is hidden, rather than painted over it.
     const silhouette=[at(-w,-d,h),at(0,-d,h+r),at(w,-d,h),at(w,-d),at(w,d),at(-w,d),at(-w,d,h)]
       .map(p=>({x:p.x*size,y:p.y*size}));
     occluders.push({points:silhouette,left:Math.min(...silhouette.map(p=>p.x)),right:Math.max(...silhouette.map(p=>p.x)),
       top:Math.min(...silhouette.map(p=>p.y)),bottom:Math.max(...silhouette.map(p=>p.y))});
     const face=(x:number,z:number,ww:number,hh:number,color:string)=>poly([at(x,d,z),at(x+ww,d,z),at(x+ww,d,z+hh),at(x,d,z+hh)],color);
-    const wall=industrial ? ['#b75936','#cb754a','#9e4936','#ac6945','#bec0a6'][index%5] : ['#eedbb1','#d6e2c5','#f2e4c7','#ce9b69','#ded3ae'][index%5];
+    const wall=ruined ? '#756b5f' : industrial ? ['#b75936','#cb754a','#9e4936','#ac6945','#bec0a6'][index%5] : ['#eedbb1','#d6e2c5','#f2e4c7','#ce9b69','#ded3ae'][index%5];
     poly([at(-w,d),at(w,d),at(w,d,h),at(-w,d,h)],wall);
     poly([at(w,-d),at(w,d),at(w,d,h),at(w,-d,h)],industrial?'#743d32':'#88896d');
     const weather=ctx.createLinearGradient(b.x,b.y-h,b.x,b.y);
@@ -238,7 +241,7 @@ export function drawOrganicCity(ctx: CanvasRenderingContext2D, land: CityPoint[]
       for(let x=-w+.03;x<-w+.10;x+=.018) line([at(x,d,.02),at(x,d,.112)],.004,'#698278');
       face(-w+.030,.045,.022,.015,'#e07b2e');
     }
-    const roof=(industrial?cityRoofs:townRoofs)[b.roof];
+    const roof=ruined ? ['#62564c','#2f3030','#a2937c'] : (industrial?cityRoofs:townRoofs)[b.roof];
     poly([at(-w,-d,h),at(0,-d,h+r),at(w,-d,h)],wall);
     poly([at(-w,d,h),at(0,d,h+r),at(w,d,h)],wall);
     if(!industrial && b.kind===4) {
@@ -273,7 +276,7 @@ export function drawOrganicCity(ctx: CanvasRenderingContext2D, land: CityPoint[]
       ctx.fillStyle='#a67a36';ctx.fillRect(sign.x+.020,sign.y,.031,.029);
       ctx.fillStyle='#f7d97f';ctx.fillRect(sign.x+.027,sign.y+.006,.015,.014);
     }
-    if(b.kind===2) {
+    if(b.kind===2 && !ruined) {
       const p=at(-.015,-d+.045,h);
       ctx.fillStyle=industrial?'#b8784d':'#e5d5ac';ctx.fillRect(p.x-.039,p.y-.23,.078,.24);
       ctx.fillStyle=industrial?'#713b30':'#888c74';ctx.fillRect(p.x+.016,p.y-.23,.023,.24);
@@ -310,6 +313,21 @@ export function drawOrganicCity(ctx: CanvasRenderingContext2D, land: CityPoint[]
           poly([{x,y},{x:x+.009,y:y-.013},{x:x+.020,y:y+.004}],i%3?'#303c42':'#637077');
         }
       }
+    }
+    if (ruined) {
+      // Missing roof panels expose a charred interior and broken rafters.
+      poly([at(-w*.8,-d*.6,h+r*.2),at(-w*.15,-d*.65,h+r*.9),at(w*.6,-d*.35,h+r*.25),
+        at(w*.45,d*.5,h+r*.1),at(-w*.2,d*.7,h+r*.25),at(-w*.65,d*.35,h+r*.3)], '#202526');
+      line([at(-w*.75,d*.65,h),at(w*.5,-d*.5,h+r*.32)], .009, '#a18d70');
+      line([at(-w*.5,-d*.6,h),at(w*.3,d*.4,h+r*.18)], .008, '#3c3027');
+      poly([at(-w*.5,d,.01),at(w*.12,d,.01),at(w*.2,d,h*.7),at(-w*.1,d,h*.9),at(-w*.4,d,h*.45)], '#272a29');
+      line([at(w*.6,d,h*.9),at(w*.38,d,h*.6),at(w*.7,d,h*.38),at(w*.48,d,.02)], .007, '#2c2b28');
+      for (let j=0;j<11;j++) {
+        const x=(Math.sin(index*7+j*3.1)*.7)*b.w, y=d+.025+(j%3)*.014;
+        poly([at(x,y),at(x+.027,y+.006),at(x+.023,y+.007,.021),at(x-.008,y,.014)], j%2?'#b1a18b':'#5a5147');
+      }
+      const fire = at(0,0,h*.55);
+      fires.push({x:fire.x*size,y:fire.y*size});
     }
   }
   // Small trees break up the Town's working yards and irregular outskirts.
@@ -372,5 +390,5 @@ export function drawOrganicCity(ctx: CanvasRenderingContext2D, land: CityPoint[]
     for(let x=center-.25;x<center+.28;x+=.040) line([{x,y:y-.241},{x:x+.021,y:y-.194}],.003,'#789388');
   }
   ctx.restore();
-  return {smoke,engines,occluders};
+  return {smoke,engines,occluders,fires};
 }

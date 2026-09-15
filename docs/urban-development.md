@@ -94,3 +94,41 @@ The browser integration test completes actual production, checks both shell stag
 City View requirements, save/load, 42 coastal footprints, and batched animation. It
 writes Town/City artwork and progression screenshots under `/tmp/epoch-*`.
 Metropolis is not implemented.
+
+## Persistent city damage
+
+All four settlement stages use `City.isVisuallyDamaged`: health strictly below
+51% of `CITY_BASE_HEALTH` (below 102 of 200 HP). At exactly 51% the healthy artwork
+and normal activity return. The rule derives from live health, so melee, siege,
+air strikes, strategic damage, capture, healing, cheats and restored saves use
+the same appearance without saving a separate damage flag.
+
+Village and the detailed city view use the existing era-specific broken sprites.
+Town, City and Metropolis have separately cached damaged streetscapes, including
+collapsed upper floors, missing roofs, blackened interiors and rubble. Damage
+preserves the settlement's stage and founding coast layout. Roof locations from
+the damaged artwork anchor persistent fire and smoke; normal traffic and
+industrial activity pause while the city is damaged.
+
+`CityDamageEffects` uses one graphics surface above the streetscape and badges,
+with at most 32 visible cities and 7 fire sites per city (10 for Metropolis).
+Hidden/offscreen sites do not draw. Reduced motion and disabled map animation
+freeze the fires while retaining the damaged appearance. Repair, city removal
+and scene shutdown remove the effects.
+
+Air impact smoke and fire render above these city layers using
+`WorldEffectDepths`. The affected city's badge is hidden shortly before impact
+and restored when the effect ends. Overlapping attacks retain the suppression
+until all their effects end; autorun, fog, refreshes and scene cleanup preserve
+normal badge visibility rules. Interception and rebase do not hide badges.
+
+Validation:
+
+- `npm run test:city-damage`: threshold/repair behavior for all four stages plus
+  deterministic damaged streetscapes and fire anchors for inland/coastal cities.
+- `npm run test:city-damage:browser -- <vite-url>`: real CityRenderer and masked
+  CityBannerRenderer in WebGL and Canvas; checks rendered explosion pixels,
+  damaged/repaired artwork, flames, detail view, fog, motion settings, overlapping
+  strikes and cleanup. Captures are in `/tmp/epoch-city-damage`.
+- `npm run test:city-damage:game -- <vite-url>`: actual bomber map click, melee and
+  artillery attacks, health notifications, turn healing and save/load.

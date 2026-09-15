@@ -25,6 +25,7 @@ export interface UnitActionViewState {
   isAvailable: boolean;
   isActive: boolean;
   tooltip?: string;
+  iconKey?: string;
 }
 
 export const ACTIONS: readonly UnitActionDefinition[] = [
@@ -322,6 +323,9 @@ export class UnitActionToolbox {
       const isActive = this.mode === action.mode || action.isToggledOn?.(unit) === true;
       states.push({
         mode,
+        iconKey: (mode === 'ranged' || mode === 'payload' || mode === 'nuclearPayload') && unit.unitType.aircraftRole
+          ? unit.unitType.aircraftRole === 'bomber' ? 'action_drop_bombs' : 'action_fire_missiles'
+          : undefined,
         label: this.getActionLabel(action, upgradePreview),
         isAvailable,
         isActive,

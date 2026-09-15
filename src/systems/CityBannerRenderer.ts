@@ -11,6 +11,7 @@ import { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
 import { TileMap } from './TileMap';
 import type { WonderSystem } from './WonderSystem';
+import { getUrbanSlots } from './UrbanDevelopment';
 
 const CITY_BANNER_DEPTH = 19.8;
 const CITY_BANNER_OFFSET_Y = -42;
@@ -75,6 +76,35 @@ export class CityBannerRenderer {
   private populationCapacityProvider: ((cityId: string) => number) | null = null;
   private dimmed = false;
   private focusedUnitTile: { x: number; y: number } | null = null;
+  private readonly attackSuppression = new Map<string, number>();
+
+  /** Hide the affected badge during impact; overlapping strikes restore it only
+   * after their final effect ends. Normal refreshes still respect fog and focus. */
+  suppressAtTile(x: number, y: number): () => void {
+    const ids = this.cityManager.getAllCities().filter(city =>
+      (city.tileX === x && city.tileY === y) || (city.settlementStage !== 'Village'
+        && getUrbanSlots(city).some(slot => slot.x === x && slot.y === y))).map(city => city.id);
+    for (const id of ids) {
+      this.attackSuppression.set(id, (this.attackSuppression.get(id) ?? 0) + 1);
+      this.banners.get(id)?.container.setVisible(false);
+    }
+    if (ids.length) this.tooltip?.hide();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      for (const id of ids) {
+        const remaining = (this.attackSuppression.get(id) ?? 1) - 1;
+        if (remaining > 0) this.attackSuppression.set(id, remaining);
+        else this.attackSuppression.delete(id);
+      }
+      this.refreshAllVisibility();
+    };
+  }
+
+  private bannerVisible(city: City): boolean {
+    return !this.attackSuppression.has(city.id) && this.visibilityPredicate(city.tileX, city.tileY);
+  }
 
   setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
     this.visibilityPredicate = predicate;
@@ -113,7 +143,7 @@ export class CityBannerRenderer {
   refreshAllVisibility(): void {
     for (const city of this.cityManager.getAllCities()) {
       const view = this.banners.get(city.id);
-      if (view) view.container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
+      if (view) view.container.setVisible(this.bannerVisible(city));
     }
   }
 
@@ -199,7 +229,7 @@ export class CityBannerRenderer {
     this.refreshProductionRing(view, city.id, slotCenterX);
     view.populationZone.setPosition(populationCenterX, 0);
     view.productionZone.setPosition(slotCenterX, 0);
-    view.container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
+    view.container.setVisible(this.bannerVisible(city));
   }
 
   rebuildAll(): void {
@@ -232,11 +262,13 @@ export class CityBannerRenderer {
       view.productionMask.destroy();
     }
     this.banners.clear();
+    this.attackSuppression.clear();
   }
 
   private createBanner(cityId: string): CityBannerView {
     const container = this.scene.add.container(0, 0);
     container.setDepth(CITY_BANNER_DEPTH);
+    container.setName(`city-badge-${cityId}`);
 
     const chrome = this.scene.add.graphics();
     const nameText = this.scene.add.text(0, 0, '', {

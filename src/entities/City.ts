@@ -1,4 +1,4 @@
-import { CITY_BASE_HEALTH } from '../data/cities';
+import { CITY_BASE_HEALTH, CITY_DAMAGE_HEALTH_FRACTION } from '../data/cities';
 
 export type CityFocusType =
   | 'balanced'
@@ -110,6 +110,10 @@ export class City {
 
   get isDamaged(): boolean {
     return this.health < CITY_BASE_HEALTH;
+  }
+
+  get isVisuallyDamaged(): boolean {
+    return this.health / CITY_BASE_HEALTH < CITY_DAMAGE_HEALTH_FRACTION;
   }
 
   get isCapital(): boolean {

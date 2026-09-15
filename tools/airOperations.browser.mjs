@@ -1,6 +1,7 @@
 /** Run with a local Vite server: node tools/airOperations.browser.mjs http://127.0.0.1:5173 */
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { checkAirMissionAnimations } from './airMissionAnimation.browser.mjs';
 const url = process.argv[2] ?? 'http://127.0.0.1:5173';
 const browser = await chromium.launch({ headless: true, executablePath: process.env.EPOCH_BROWSER_PATH ?? '/usr/bin/google-chrome', args: ['--no-sandbox'] });
 try {
@@ -8,46 +9,11 @@ try {
   page.setDefaultTimeout(20000);
   const errors = [];
   page.on('pageerror', error => { errors.push(error.message); console.error(error.stack); });
-  await page.route('**/__air_test', route => route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
-  await page.goto(`${url}/__air_test`);
-  await page.evaluate(async () => {
-    const { default: Phaser } = await import('/node_modules/.vite/deps/phaser.js');
-    const { AirMissionRenderer } = await import('/src/renderers/AirMissionRenderer.ts');
-    const { GREAT_WAR_BOMBER, TRIPLANE, MOBILE_SAM } = await import('/src/data/units.ts');
-    let emit;
-    window.airTest = { enabled: true };
-    new Phaser.Game({ type: Phaser.CANVAS, width: 700, height: 400, audio: { noAudio: true }, scene: {
-      create() {
-        window.airTest.scene = this;
-        for (const type of [GREAT_WAR_BOMBER,TRIPLANE]) {
-          const g = this.make.graphics({x:0,y:0}); g.fillStyle(0xffffff).fillTriangle(0,16,32,16,16,0); g.generateTexture(`unit_${type.id}`,32,32); g.destroy();
-        }
-        new AirMissionRenderer(this,{tileToWorld:(x,y)=>({x:80+x*80,y:80+y*80})}, {onFlight: callback => emit=callback},()=>window.airTest.enabled,()=>true);
-        window.airTest.fire = (kind='strike',defense='fighter',destroyed=false) => emit({ aircraft:{unitType:GREAT_WAR_BOMBER},origin:{x:0,y:1},destination:{x:5,y:1},kind,destroyed,
-          ...(kind==='intercepted' ? {interceptor:{unitType:defense==='fighter'?TRIPLANE:MOBILE_SAM},interceptorOrigin:{x:3,y:0}} : {}) });
-      },
-    } });
+  await checkAirMissionAnimations(page, url);
+  await page.route('**/src/main.ts*', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: `${await response.text()}\nwindow.__airReviewGame = game;` });
   });
-  await page.waitForFunction(()=>window.airTest?.fire);
-  await page.evaluate(()=>window.airTest.fire());
-  await page.waitForFunction(()=>window.airTest.scene.children.list.some(o=>o.type==='Image' && o.x>100 && o.x<450));
-  const outward=await page.evaluate(()=>window.airTest.scene.children.list.find(o=>o.type==='Image').x);
-  await page.waitForFunction(()=>window.airTest.scene.children.list.some(o=>o.type==='Image' && o.x>450));
-  await page.waitForFunction(()=>window.airTest.scene.children.list.some(o=>o.type==='Image' && o.x<300));
-  await page.waitForFunction(()=>window.airTest.scene.children.list.length===0);
-  await page.evaluate(()=>window.airTest.fire('intercepted'));
-  await page.waitForFunction(()=>window.airTest.scene.children.list.filter(o=>o.type==='Image').length===2);
-  await page.waitForFunction(()=>window.airTest.scene.children.list.length===0);
-  await page.evaluate(()=>window.airTest.fire('intercepted','sam',true));
-  await page.waitForFunction(()=>window.airTest.scene.children.list.some(o=>o.type==='Arc'));
-  await page.waitForFunction(()=>window.airTest.scene.children.list.length===0);
-  await page.evaluate(()=>window.airTest.fire('rebase'));
-  await page.waitForFunction(()=>window.airTest.scene.children.list.some(o=>o.type==='Image' && o.x>300));
-  await page.waitForFunction(()=>window.airTest.scene.children.list.length===0);
-  await page.evaluate(()=>{window.airTest.enabled=false;window.airTest.fire();});
-  assert.equal(await page.evaluate(()=>window.airTest.scene.children.list.length),0);
-  assert.deepEqual(errors,[]);
-  console.log(`PASS: real Phaser outbound flight (${Math.round(outward)}px sampled), return, fighter launch/return, stationary SAM projectile, destruction, Rebase, and skipped autorun visuals.`);
   // Exercise the real GameScene, HUD actions, map pointer input, save/load and autorun.
   const scenario = {
     meta:{name:'Air warfare regression',version:1,startYear:1930,startYearIsBC:false,originalCapitalCollapsePercent:0},
@@ -72,13 +38,19 @@ try {
   const bomber=save.units.find(u=>u.unitTypeId==='great_war_bomber');
   assert.equal(bomber.airBase?.id,'air_home');
   let preview=await page.evaluate(id=>window.__epochDiagnostics.prepareAirAction(id,14,10),bomber.id);
-  assert.ok(preview.actions.some(a=>a.label==='Air Mission' && a.isActive));
+  assert.ok(preview.actions.some(a=>a.mode==='ranged' && a.isActive));
   assert.ok(preview.actions.some(a=>a.mode==='rebase'));
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   console.log('Clicking air action');
   await page.screenshot({path:'/tmp/epoch-air-game-ui.png'});
   await page.mouse.click(640,360);
   await page.waitForFunction(id=>window.__epochDiagnostics.getSaveState().units.find(u=>u.id===id)?.movementPoints===0,bomber.id);
+  await page.waitForFunction(() => window.__airReviewGame.scene.getScene('GameScene').children.list
+    .some(object => object.name === 'aircraft-attack' && object.visible));
+  await page.screenshot({ path: '/tmp/epoch-air-animation/game-approach.png' });
+  await page.waitForFunction(() => window.__airReviewGame.scene.getScene('GameScene').children.list
+    .some(object => object.name === 'air-impact-smoke' && object.visible && object.alpha > .1));
+  await page.screenshot({ path: '/tmp/epoch-air-animation/game-impact.png' });
   save=await page.evaluate(()=>window.__epochDiagnostics.getSaveState());
   assert.equal(save.units.find(u=>u.unitTypeId==='warrior').health,50);
   assert.equal(save.units.find(u=>u.id===bomber.id).airBase.id,'air_home');

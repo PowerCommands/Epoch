@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="red" cx="35%" cy="25%" r="80%"><stop stop-color="#f74935"/><stop offset=".55" stop-color="#cc1109"/><stop offset="1" stop-color="#790500"/></radialGradient>
+    <linearGradient id="rim" x2="0" y2="1"><stop stop-color="#fff6df"/><stop offset=".5" stop-color="#aeada5"/><stop offset="1" stop-color="#f5e7cb"/></linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#rim)" stroke="#5d666b" stroke-width="2"/>
+  <circle cx="64" cy="64" r="56" fill="url(#red)" stroke="#fff2d8" stroke-width="2"/>
+  <path d="M24 35a48 48 0 0 1 77-6" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="3" stroke-linecap="round"/>
+  <!-- Falling bombs: tail fins above rounded noses, with downward motion trails. -->
+  <g stroke="#fff5d9" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M47 24v12m12-15v15M82 32v14m12-10v10" fill="none" stroke-width="3"/>
+    <g fill="#fff5d9" stroke-width="2">
+      <path d="M44 42h18l-4 12v24c0 13-5 20-9 24-4-4-9-11-9-24V54l-4-12h8l5 8 5-8z" transform="translate(4 0)"/>
+      <path d="M79 52h16l-4 11v17c0 10-4 16-8 20-4-4-8-10-8-20V63l-4-11h8l4 7 4-7z"/>
+    </g>
+    <path d="M46 61v16m33-9v11" stroke="#b8462c" stroke-width="3"/>
+  </g>
+</svg>

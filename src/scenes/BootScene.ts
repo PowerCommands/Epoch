@@ -77,6 +77,8 @@ export class BootScene extends Phaser.Scene {
     this.load.image('action_move', 'assets/sprites/actions/move.png');
     this.load.image('action_attack', 'assets/sprites/actions/attack.png');
     this.load.image('action_ranged_attack', 'assets/sprites/actions/ranged-attack.png');
+    this.load.svg('action_drop_bombs', 'assets/sprites/actions/drop-bombs.svg', { width: 128, height: 128 });
+    this.load.svg('action_fire_missiles', 'assets/sprites/actions/fire-missiles.svg', { width: 128, height: 128 });
     this.load.image('action_upgrade', 'assets/sprites/actions/upgrade.png');
     this.load.image('action_sleep', 'assets/sprites/actions/sleep.png');
     this.load.svg('action_clean_nuclear_waste', 'assets/sprites/actions/clean_nuclear_waste.svg', { width: 128, height: 128 });

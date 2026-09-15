@@ -40,7 +40,13 @@ export class AirOperationsSystem {
     });
     cities.onCityChanged(event => { if (event.reason === 'buildingsChanged' || event.reason === 'removed' || event.reason === 'ownershipTransferred') this.reconcile(); });
   }
-  onFlight(listener: (event: AirFlightEvent) => void): void { this.listeners.push(listener); }
+  onFlight(listener: (event: AirFlightEvent) => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      const index = this.listeners.indexOf(listener);
+      if (index >= 0) this.listeners.splice(index, 1);
+    };
+  }
   cityCapacity(city: City): number {
     return Math.max(0, ...this.cities.getBuildings(city.id).getAll().map(id => getBuildingById(id)?.aircraftCapacity ?? 0));
   }

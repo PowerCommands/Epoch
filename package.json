@@ -63,6 +63,11 @@
     "test:modern-africa": "node --import tsx --test tools/modernAfricanNations.test.ts tools/overthrowLeadership.test.ts",
     "test:roster-alternatives": "node --import tsx tools/rosterAlternativeLeaders.test.ts",
     "test:air": "node --import tsx tools/airOperations.test.ts",
+    "test:air-animation": "node --import tsx --test tools/airMissionAnimation.test.ts",
+    "test:air-animation:browser": "node tools/airMissionAnimation.browser.mjs",
+    "test:city-damage": "node --import tsx tools/cityDamageVisuals.test.ts",
+    "test:city-damage:browser": "node tools/cityDamageVisuals.browser.mjs",
+    "test:city-damage:game": "node tools/cityDamageGameplay.browser.mjs",
     "test:renewables": "node --import tsx tools/renewableEnvironment.test.ts"
   },
   "dependencies": {

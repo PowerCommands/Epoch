@@ -6673,7 +6673,8 @@ export class GameScene extends Phaser.Scene {
     // whether the current declaration is a defensive ally join (logged
     // separately with alliance context, so the generic line is skipped).
     let allianceWarSystem: AllianceWarSystem | null = null;
-    new AirMissionRenderer(this, tileMap, combatSystem.airOperations, () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile);
+    new AirMissionRenderer(this, tileMap, combatSystem.airOperations, () => !isAutoplayActive() && humanNationId !== undefined,
+      canSeeTile, target => cityBannerRenderer.suppressAtTile(target.x, target.y));
     // Subscribe before terrain refresh: preserve the old terrain during missile flight.
     new NuclearStrikeRenderer(this, tileMap, combatSystem.strategicWeapons, () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile);
     airBaseRenderer = new AirBaseRenderer(this, tileMap, combatSystem.airOperations, unitManager, cityManager, selectionManager, canSeeTile);
@@ -8565,11 +8566,18 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-NUMPAD_ENTER', onEnterEndTurn);
     });
 
-    // Read-only tile inspector: I opens a details panel for the tile under the
+    // Tile inspector: I opens a details panel for the tile under the
     // current selection (tile/city/unit all resolve to their tile). Toggles
     // closed if already open. Presentation lives in TileInspectorDialog; the
     // data snapshot is built by buildTileInspection (no gameplay logic here).
-    const tileInspectorDialog = new TileInspectorDialog();
+    const tileInspectorDialog = new TileInspectorDialog((unitId) => {
+      if (shouldIgnoreGlobalTurnHotkey() || worldInputGate.isWorldInteractionBlocked()) return false;
+      const unit = unitManager.getUnit(unitId);
+      if (!unit || !canShowUnit(unit)) return false;
+      setFreeSelectionMode(false);
+      selectionManager.selectUnit(unit);
+      return true;
+    });
     let inspectedCoord: { x: number; y: number } | null = null;
     const selectedTileCoord = (): { x: number; y: number } | null => {
       const selection = selectionManager.getSelected();
@@ -8615,6 +8623,18 @@ export class GameScene extends Phaser.Scene {
       showTileInspection(coord);
     };
     this.input.keyboard?.on('keydown-I', onKeyInspectTile);
+    const canUseStackArrows = (): boolean => !shouldIgnoreGlobalTurnHotkey()
+      && !worldInputGate.isWorldInteractionBlocked();
+    this.cameraController.setHorizontalArrowsCaptured(() =>
+      canUseStackArrows() && selectionManager.canCycleUnits());
+    const cycleTileUnit = (direction: -1 | 1, event: KeyboardEvent): void => {
+      if (event.ctrlKey || event.metaKey || event.altKey || !canUseStackArrows()) return;
+      if (selectionManager.cycleUnits(direction)) event.preventDefault();
+    };
+    const onPreviousTileUnit = (event: KeyboardEvent): void => cycleTileUnit(-1, event);
+    const onNextTileUnit = (event: KeyboardEvent): void => cycleTileUnit(1, event);
+    this.input.keyboard?.on('keydown-LEFT', onPreviousTileUnit);
+    this.input.keyboard?.on('keydown-RIGHT', onNextTileUnit);
     // While the inspector is open, follow the selection: picking another tile
     // (or unit/city) rebuilds the snapshot for that tile automatically.
     selectionManager.onSelectionChanged(() => {
@@ -8630,6 +8650,9 @@ export class GameScene extends Phaser.Scene {
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-I', onKeyInspectTile);
+      this.input.keyboard?.off('keydown-LEFT', onPreviousTileUnit);
+      this.input.keyboard?.off('keydown-RIGHT', onNextTileUnit);
+      this.cameraController.setHorizontalArrowsCaptured(() => false);
       tileInspectorDialog.shutdown();
     });
     const hudDataProvider = new NationHudDataProvider(
@@ -12917,7 +12940,7 @@ export class GameScene extends Phaser.Scene {
       },
       {
         title: 'Found City',
-        text: 'Units have different action buttons depending on what they are capable of doing. The Settler can found a city.',
+        text: 'Units have different action buttons depending on what they are capable of doing. The Settler can found a city. When units share a tile, use Left / Right arrows to switch between them, or press I and click a unit portrait in Information to select it and close the window.',
         onEnter: () => selectUnitById(startingSettlerId),
         resolveTarget: () => deps.hudLayer.getUnitActionButtonRect('found'),
       },
