@@ -2334,8 +2334,12 @@ export class RightSidebarPanelDataProvider {
     const vassalWarReason = dm.isVassal(humanId)
       ? 'A vassal state cannot declare war.'
       : undefined;
+    const independenceRemaining = dm.getIndependenceProtectionRemainingTurns(humanId, nationId, currentTurn);
+    const independenceReason = independenceRemaining > 0
+      ? `Independence recognized — ${independenceRemaining} turns remaining` : undefined;
+    if (independenceReason) rows.push(textRow(independenceReason, true));
     const warPeaceReason = relation.state === 'PEACE'
-      ? (vassalWarReason ?? ownVassalReason ?? alliancePartnerReason ?? peaceTreatyReason)
+      ? (vassalWarReason ?? ownVassalReason ?? alliancePartnerReason ?? independenceReason ?? peaceTreatyReason)
       : peaceUnavailableReason;
     rows.push(disabledReasonButtonRow(
       relation.state === 'PEACE' ? 'Declare War' : 'Propose Peace',

@@ -1,3 +1,4 @@
+import type { IndependenceSettlement } from '../types/independence';
 import type { TurnManager } from './TurnManager';
 import { isBarbarianNation } from '../data/barbarians';
 import { COLONIALISM_CULTURE_NODE_ID } from '../data/cultureTree';
@@ -92,6 +93,8 @@ export interface DiplomacyRelation {
   // Set when war is declared; preserved through the peace transition for treaty logic.
   aggressorNationId?: string;
 
+  // Directional purchased-independence settlement; also drives temporary AI mobilization.
+  independenceSettlement?: IndependenceSettlement | null;
   // While set, neither side may declare war until the current turn reaches this value.
   peaceTreatyUntilTurn?: number | null;
   // UN-enforced temporary ceasefire. Separate from ordinary peace treaties so
@@ -345,6 +348,7 @@ export function createDefaultRelation(): DiplomacyRelation {
     lastOpenBordersChangeTurn: null,
     lastEmbassyChangeTurn: null,
     lastTradeRelationsChangeTurn: null,
+    independenceSettlement: null,
     peaceTreatyUntilTurn: null,
     ceasefireUntilTurn: null,
     militaryUnitsLostA: 0,
@@ -415,6 +419,7 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
     lastTradeRelationsChangeTurn:
       partial.lastTradeRelationsChangeTurn ?? base.lastTradeRelationsChangeTurn,
     aggressorNationId: partial.aggressorNationId,
+    independenceSettlement: partial.independenceSettlement ?? null,
     peaceTreatyUntilTurn: partial.peaceTreatyUntilTurn ?? base.peaceTreatyUntilTurn,
     ceasefireUntilTurn: partial.ceasefireUntilTurn ?? base.ceasefireUntilTurn,
     militaryUnitsLostA: partial.militaryUnitsLostA ?? base.militaryUnitsLostA,
@@ -427,6 +432,7 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
 }
 
 const PAIR_KEY_SEPARATOR = '|';
+export const DEFAULT_INDEPENDENCE_COOLDOWN_TURNS = 100;
 
 /**
  * DiplomacyManager — tracks diplomatic state between nation pairs.
@@ -475,6 +481,45 @@ export class DiplomacyManager {
     private readonly hasCultureUnlock: (nationId: string, cultureNodeId: string) => boolean = () => false,
     private minPeaceNegotiationTurns: number = MIN_WAR_TURNS_FOR_PEACE,
   ) {}
+
+  private independenceCooldownTurns = DEFAULT_INDEPENDENCE_COOLDOWN_TURNS;
+
+  getIndependenceCooldownTurns(): number { return this.independenceCooldownTurns; }
+
+  setIndependenceCooldownTurns(turns: number | undefined): void {
+    this.independenceCooldownTurns = typeof turns === 'number' && Number.isSafeInteger(turns) && turns >= 0 ? turns : DEFAULT_INDEPENDENCE_COOLDOWN_TURNS;
+  }
+
+  recognizePurchasedIndependence(nationId: string, formerMasterId: string): void {
+    const startedTurn = this.turnManager?.getCurrentRound() ?? 0;
+    const settlement = { nationId, formerMasterId, startedTurn, expiresTurn: startedTurn + this.independenceCooldownTurns };
+    const relation = this.getRelation(nationId, formerMasterId);
+    this.relations.set(this.pairKey(nationId, formerMasterId), {
+      ...relation,
+      // This directional settlement replaces the purchase's old bilateral treaty.
+      peaceTreatyUntilTurn: null,
+      independenceSettlement: this.independenceCooldownTurns > 0 ? settlement : null,
+    });
+    console.log(`[Independence] independence purchased: ${nationId} from ${formerMasterId}; turn=${startedTurn}`);
+    if (this.independenceCooldownTurns > 0) {
+      console.log(`[Independence] Independence Cooldown started; Post-Independence Mobilization started (AI): ${nationId}, formerMaster=${formerMasterId}, remaining=${this.independenceCooldownTurns}, expires=${settlement.expiresTurn}`);
+    }
+  }
+
+  getIndependenceProtectionRemainingTurns(formerMasterId: string, nationId: string, turn = this.turnManager?.getCurrentRound() ?? 0): number {
+    const settlement = this.getRelation(formerMasterId, nationId).independenceSettlement;
+    return settlement?.formerMasterId === formerMasterId && settlement.nationId === nationId
+      ? Math.max(0, settlement.expiresTurn - turn) : 0;
+  }
+
+  getPostIndependenceMobilization(nationId: string): IndependenceSettlement | undefined {
+    const turn = this.turnManager?.getCurrentRound() ?? 0;
+    for (const relation of this.relations.values()) {
+      const settlement = relation.independenceSettlement;
+      if (settlement?.nationId === nationId && settlement.expiresTurn > turn) return { ...settlement };
+    }
+    return undefined;
+  }
 
   /** The bilateral Peace Treaty cooldown length applied when a war ends in peace. */
   getPeaceTreatyCooldownTurns(): number {
@@ -1225,6 +1270,7 @@ export class DiplomacyManager {
   /** Whether the canonical non-forced war transition is currently legal. */
   canDeclareWar(aggressorId: string, targetId: string): boolean {
     if (aggressorId === targetId) return false;
+    if (this.getIndependenceProtectionRemainingTurns(aggressorId, targetId) > 0) return false;
     if (this.isVassal(aggressorId)) return false;
     if (this.areHostAndVassal(aggressorId, targetId)) return false;
     const key = this.pairKey(aggressorId, targetId);
@@ -1293,8 +1339,14 @@ export class DiplomacyManager {
     // query used by proposal systems; forced scenario transitions bypass them.
     if (!bypassRestrictions && !this.canDeclareWar(aggressorId, targetId)) return false;
     const previous = this.relations.get(key);
+    const settlement = previous?.independenceSettlement;
+    const breaksSettlement = settlement?.nationId === aggressorId && metadata.source !== 'vassalObligation' && metadata.source !== 'nuclearResponse';
+    if (breaksSettlement && settlement && settlement.expiresTurn > (this.turnManager?.getCurrentRound() ?? 0)) {
+      console.log(`[Independence] protection broken early: ${aggressorId} attacked former master ${targetId}; Post-Independence Mobilization ended`);
+    }
     const next = normalizeRelation({
       ...previous,
+      independenceSettlement: breaksSettlement ? null : settlement,
       state: 'WAR',
       // War clears any active border grants in both directions.
       openBordersFromAToB: false,
@@ -1814,6 +1866,7 @@ export class DiplomacyManager {
         relation.lastOpenBordersChangeTurn === defaults.lastOpenBordersChangeTurn &&
         relation.lastEmbassyChangeTurn === defaults.lastEmbassyChangeTurn &&
         relation.lastTradeRelationsChangeTurn === defaults.lastTradeRelationsChangeTurn &&
+        !relation.independenceSettlement &&
         relation.peaceTreatyUntilTurn === defaults.peaceTreatyUntilTurn &&
         relation.ceasefireUntilTurn === defaults.ceasefireUntilTurn
       ) {
@@ -2008,6 +2061,11 @@ export class DiplomacyManager {
    */
   processDiplomaticUpkeep(currentTurn: number): void {
     for (const [key, relation] of this.relations) {
+      const settlement = relation.independenceSettlement;
+      if (settlement && currentTurn >= settlement.expiresTurn) {
+        console.log(`[Independence] Independence Cooldown expired; Post-Independence Mobilization ended: ${settlement.nationId}, formerMaster=${settlement.formerMasterId}, turn=${currentTurn}`);
+        relation.independenceSettlement = null;
+      }
       const treatyStartTurn = relation.lastPeaceProposalTurn;
       const treatyUntilTurn = relation.peaceTreatyUntilTurn;
       const isTreatyCoolingTurn = relation.state === 'PEACE'

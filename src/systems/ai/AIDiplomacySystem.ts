@@ -526,6 +526,8 @@ export class AIDiplomacySystem {
       // above so it is not amplified/dampened by personality or era weights.
       warScore += reclaimMod.warScoreDelta;
 
+      const mobilizing = !!this.diplomacyManager.getPostIndependenceMobilization(selfId);
+      if (mobilizing) warScore *= 0.4;
       const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
       const suspicionNote = suspicionWarBonus > 0
         ? ` (war pressure increased by suspicion ${Math.round(relation.suspicion)}`
@@ -540,7 +542,8 @@ export class AIDiplomacySystem {
       // its personality would otherwise want one — it should husband its strength
       // for the capital. Defensive/high-threat cases already returned above.
       const wantsWar = (personalityWantsWar || goalWantsWar || reclaimMod.treatAsWarDesire)
-        && !reclaimMod.suppressUnrelated;
+        && !reclaimMod.suppressUnrelated
+        && (!mobilizing || goalWantsWar);
       if (!wantsWar) {
         this.considerRoutineEconomicPressure(
           selfId,

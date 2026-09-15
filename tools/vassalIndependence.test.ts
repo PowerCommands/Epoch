@@ -59,19 +59,16 @@ test('purchase transfers exactly 200,000 Gold, ends vassalage, and reconciles re
   );
 });
 
-test('independence stamps a peace treaty so the former host cannot immediately re-declare war', () => {
+test('purchased independence blocks the former host, while the freed nation can break the settlement', () => {
   const h = harness(250_000);
   h.diplomacy.setMemoryValues('england', 'mongolia', {
     trust: 0, fear: 60, suspicion: 40, hostility: 80, affinity: 5,
   });
   h.system.buyIndependence('england');
-  // A negotiated-independence peace guarantee is in force for both directions,
-  // blocking the dominant former host from reconquering the freed nation on the
-  // very next turn.
-  assert.equal(h.diplomacy.isPeaceTreatyActive('mongolia', 'england', 0), true);
-  assert.equal(h.diplomacy.getPeaceTreatyRemainingTurns('mongolia', 'england', 0) > 0, true);
+  assert.equal(h.diplomacy.isPeaceTreatyActive('mongolia', 'england', 0), false);
+  assert.equal(h.diplomacy.getIndependenceProtectionRemainingTurns('mongolia', 'england'), 100);
   assert.equal(h.diplomacy.canDeclareWar('mongolia', 'england'), false);
-  assert.equal(h.diplomacy.canDeclareWar('england', 'mongolia'), false);
+  assert.equal(h.diplomacy.canDeclareWar('england', 'mongolia'), true);
 });
 
 test('independence lifts a low affinity up to the reconciliation floor of 50', () => {

@@ -1,3 +1,4 @@
+import { applyMobilizationProductionWeights, isMobilizationInfrastructure } from './ai/PostIndependenceMobilization';
 import { getUrbanInfrastructureCandidates } from './ai/AIUrbanDevelopment';
 import { nuclearPlantMaintenancePriority } from '../data/nuclearPlants';
 import { planAirProduction } from './ai/AIAirProduction';
@@ -5831,7 +5832,10 @@ export class AISystem {
 
   private getStrategy(nationId: string): AIStrategy {
     const nation = this.nationManager.getNation(nationId);
-    return getAIStrategyById(nation?.aiStrategyId);
+    const strategy = getAIStrategyById(nation?.aiStrategyId);
+    return this.diplomacyManager?.getPostIndependenceMobilization(nationId)
+      ? { ...strategy, military: { ...strategy.military, aggression: strategy.military.aggression * 0.6 } }
+      : strategy;
   }
 
   private canTakeAggressiveAction(unit: Unit, strategy: AIStrategy): boolean {
@@ -5882,6 +5886,33 @@ export class AISystem {
     this.logStrategicEvent?.(nationId, message);
   }
 
+  private readonly mobilizationSnapshotStartByNation = new Map<string, number>();
+
+  private logMobilizationReadiness(nationId: string, cities: City[], target: number): void {
+    const settlement = this.diplomacyManager?.getPostIndependenceMobilization(nationId);
+    const previousStart = this.mobilizationSnapshotStartByNation.get(nationId);
+    const round = this.turnManager.getCurrentRound();
+    const justStarted = settlement && previousStart !== settlement.startedTurn;
+    const justEnded = !settlement && previousStart !== undefined;
+    if (!justStarted && !justEnded && !(settlement && round % 25 === 0)) return;
+    if (settlement) this.mobilizationSnapshotStartByNation.set(nationId, settlement.startedTurn);
+    else this.mobilizationSnapshotStartByNation.delete(nationId);
+    const resources = this.nationManager.getResources(nationId);
+    const units = this.unitManager.getUnitsByOwner(nationId).filter(u => u.unitType.baseStrength > 0);
+    const defenses = cities.map(city => {
+      const buildings = ALL_BUILDINGS.filter(b => isMobilizationInfrastructure(b)
+        && this.cityManager.getBuildings(city.id).hasActive(b.id));
+      return `${city.name}=[${buildings.map(b => b.id).join(',')}]`;
+    }).join('; ');
+    const phase = justEnded ? 'ended' : justStarted ? 'initial readiness' : 'readiness';
+    const message = `Post-Independence Mobilization ${phase}: remaining=${settlement ? settlement.expiresTurn - round : 0}`
+      + `, expires=${settlement?.expiresTurn ?? round}, army=${units.length}/${target}`
+      + `, strength=${units.reduce((sum, u) => sum + u.unitType.baseStrength, 0)}`
+      + `, gold=${Math.round(resources.gold)}, GPT=${resources.goldPerTurn}; ${defenses}`;
+    console.log(this.formatLog(nationId, message));
+    this.logStrategicEvent?.(nationId, message);
+  }
+
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
     this.reconsiderContinuousProjects(cities, this.turnManager.getCurrentRound());
@@ -5893,12 +5924,12 @@ export class AISystem {
     this.logSpaceRaceFactoryPriorityState(nationId);
     this.updateAndLogAIPhase(nationId);
     this.ensureScoutProduction(nationId, cities);
-    this.ensureFoundationSettlerProduction(nationId, cities);
+    if (!this.diplomacyManager?.getPostIndependenceMobilization(nationId)) this.ensureFoundationSettlerProduction(nationId, cities);
     this.ensureNavalReconProduction(nationId, cities);
     this.ensureMaritimeMinimumProduction(nationId, cities);
     this.ensureResourceExplorationProduction(nationId, cities);
     this.runMilitaryModernization(nationId);
-    this.ensureGrandStadiumProduction(nationId);
+    if (!this.diplomacyManager?.getPostIndependenceMobilization(nationId)) this.ensureGrandStadiumProduction(nationId);
     this.ensureScienceVictoryProduction(nationId, cities);
 
     const strategy = this.getStrategy(nationId);
@@ -5915,9 +5946,18 @@ export class AISystem {
     const archaeologyPlan = this.buildArchaeologyProductionPlan(nationId);
 
     const doctrine = this.doctrineEvaluator.getDoctrine(nationId);
-    const effectiveMaxUnits = getEffectiveMilitaryUnitCap(nationId, strategy.id);
+    const settlement = this.diplomacyManager?.getPostIndependenceMobilization(nationId);
+    const normalCap = getEffectiveMilitaryUnitCap(nationId, strategy.id);
+    // Only the production target rises; ordinary upkeep and over-cap unhappiness still apply.
+    const resources = this.nationManager.getResources(nationId);
+    const canAffordMobilization = resources.goldPerTurn > 2 && resources.gold >= 50
+      && (this.happinessSystem?.getNetHappiness(nationId) ?? 1) > 0
+      && !this.isConsolidationSuppressionActive(nationId);
+    const effectiveMaxUnits = settlement && canAffordMobilization
+      ? Math.max(Math.ceil(normalCap * 1.5), cities.length * 2) : normalCap;
     this.logMilitaryBudgetStatusOnce(nationId, doctrine.id, plannedMilitaryCount, effectiveMaxUnits, strategy.military.maxUnits, this.computeBudgetModifier(plannedMilitaryCount, effectiveMaxUnits));
 
+    this.logMobilizationReadiness(nationId, cities, effectiveMaxUnits);
     const currentRound = this.turnManager.getCurrentRound();
     if (currentRound % 25 === 0) {
       this.logPeriodicDoctrineStatus(nationId);
@@ -6328,9 +6368,11 @@ export class AISystem {
     if (!this.unitUpgradeSystem) return;
 
     const doctrine = getLeaderMilitaryDoctrineByNationId(nationId);
-    const reserve = getModernizationGoldReserve(doctrine);
-    const maxUpgrades = getModernizationMaxUpgrades(doctrine);
     const resources = this.nationManager.getResources(nationId);
+    const mobilizing = !!this.diplomacyManager?.getPostIndependenceMobilization(nationId);
+    if (mobilizing && (resources.goldPerTurn <= 0 || this.isConsolidationSuppressionActive(nationId))) return;
+    const reserve = getModernizationGoldReserve(doctrine);
+    const maxUpgrades = getModernizationMaxUpgrades(doctrine) + (mobilizing ? 1 : 0);
 
     const navalDoctrine = isMaritimeDoctrine(doctrine);
     // Maritime doctrines keep a smaller reserve for naval combat upgrades so
@@ -7185,7 +7227,15 @@ export class AISystem {
     // Consolidation Mode: suppress ordinary buildup so productive capacity goes
     // into the treasury (Economic Development) rather than more permanent units
     // or marginal construction. Emergency/urgent needs below still override it.
-    const consolidationSuppression = this.isConsolidationSuppressionActive(nationId);
+    const mobilizing = !!this.diplomacyManager?.getPostIndependenceMobilization(nationId);
+    const resources = this.nationManager.getResources(nationId);
+    const mobilizationEconomyStable = !this.isConsolidationSuppressionActive(nationId)
+      && resources.goldPerTurn > 2 && resources.gold >= 50
+      && economy.netFood > strategy.production.lowNetFoodThreshold
+      && economy.production > strategy.production.lowProductionThreshold
+      && (happiness?.netHappiness ?? 1) > 0;
+    const consolidationSuppression = this.isConsolidationSuppressionActive(nationId)
+      || (mobilizing && !mobilizationEconomyStable);
     const defensivePressure = this.isDefensivePressureActive(nationId);
     const doctrineBudget = this.doctrineEvaluator.getDesiredMilitaryBudget(nationId);
     const isOverBudget = plannedMilitaryCount >= effectiveMaxUnits;
@@ -7691,14 +7741,31 @@ export class AISystem {
       }
     }
 
+    const importantCity = mobilizing && (city.isResidenceCapital || city.focus === 'military'
+      || city.ownedTileCoords.some(coord => this.gridSystem.getAdjacentCoords(coord).some(adj => {
+        const owner = this.mapData.tiles[adj.y]?.[adj.x]?.ownerId;
+        return owner !== undefined && owner !== nationId;
+      })));
+    if (mobilizing && mobilizationEconomyStable) {
+      for (const building of ALL_BUILDINGS) {
+        if (!isMobilizationInfrastructure(building) || !this.canCityBuildBuilding(city, nationId, building)) continue;
+        if (resources.goldPerTurn <= building.maintenance + 2) continue;
+        // Interior cities invest in training when they actually need more troops.
+        if (!importantCity && plannedMilitaryCount >= effectiveMaxUnits && !(building.modifiers.cityDefensePercent ?? 0)) continue;
+        candidates.push({ item: { kind: 'building', buildingType: building }, baseScore: 55, category: 'productionBuilding' });
+      }
+    }
     const nation = this.nationManager.getNation(nationId);
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = filterAvailableAIProductionCandidates(
-      applyGoalWeights(candidates, goalWeights),
+      applyMobilizationProductionWeights(applyGoalWeights(candidates, goalWeights), {
+        active: mobilizing, economyStable: mobilizationEconomyStable, importantCity,
+        armyDeficient: plannedMilitaryCount < effectiveMaxUnits,
+      }),
       (item) => this.productionSystem.getItemProductionBlockReason(city.id, item),
     );
     const cityFocus = city.focus ?? 'balanced';
-    const rhythmPick = consolidationSuppression || spaceRaceFactoryCandidate || (powerPlantPlan?.score ?? 0) >= 100 ? undefined : this.pickProductionRhythmCandidate(
+    const rhythmPick = mobilizing || consolidationSuppression || spaceRaceFactoryCandidate || (powerPlantPlan?.score ?? 0) >= 100 ? undefined : this.pickProductionRhythmCandidate(
       city,
       nationId,
       strategy,
@@ -7721,6 +7788,12 @@ export class AISystem {
       return best.item;
     }
     if (best) {
+      if (mobilizing) {
+        const name = best.item.kind === 'building' ? best.item.buildingType.name : best.item.kind === 'unit' ? best.item.unitType.name : best.category;
+        const message = `Post-Independence Mobilization production: ${city.name} selected ${name}; economyStable=${mobilizationEconomyStable}, importantCity=${importantCity}, army=${plannedMilitaryCount}/${effectiveMaxUnits}`;
+        console.log(this.formatLog(nationId, message));
+        this.logStrategicEvent?.(nationId, message);
+      }
       if (best.item.kind === 'unit' && best.item.unitType.baseStrength > 0) {
         this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx, city.name, budgetModifier);
         this.logDoctrineToleranceIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx.doctrine, city.name);

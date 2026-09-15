@@ -49,6 +49,8 @@ export interface ScenarioMeta {
    * peace. Authored in the Editor's Scenario Details. Absent/invalid falls back to
    * DEFAULT_PEACE_TREATY_COOLDOWN_TURNS (10).
    */
+  /** Purchased independence protection and AI mobilization duration; defaults to 100. */
+  independenceCooldownTurns?: number;
   peaceTreatyCooldownTurns?: number;
   /**
    * Minimum turns a war must last before peace can first be proposed. Authored in

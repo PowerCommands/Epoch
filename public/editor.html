@@ -766,6 +766,9 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Barbarian spawn interval (rounds)
         <input id="sd-barbarian-interval" type="number" min="1" step="1">
       </label>
+      <label class="field">Independence Cooldown (turns)
+        <input id="sd-independence-cooldown" type="number" min="0" step="1">
+      </label>
       <label class="field">Peace Treaty cooldown (turns)
         <input id="sd-peace-treaty-cooldown" type="number" min="0" step="1">
       </label>
@@ -1148,6 +1151,9 @@ function normalizeScenarioMeta() {
     meta.barbarianSpawnInterval = DEFAULT_BARBARIAN_SPAWN_INTERVAL;
   } else {
     meta.barbarianSpawnInterval = Math.floor(meta.barbarianSpawnInterval);
+  }
+  if (!Number.isSafeInteger(meta.independenceCooldownTurns) || meta.independenceCooldownTurns < 0) {
+    meta.independenceCooldownTurns = 100;
   }
   if (typeof meta.peaceTreatyCooldownTurns !== 'number' || !(meta.peaceTreatyCooldownTurns >= 0)) {
     meta.peaceTreatyCooldownTurns = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS;
@@ -6582,6 +6588,7 @@ function openScenarioDetails() {
   document.getElementById('sd-time-mode').value = meta.timeProgression.mode;
   document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
   document.getElementById('sd-barbarian-interval').value = String(meta.barbarianSpawnInterval);
+  document.getElementById('sd-independence-cooldown').value = String(meta.independenceCooldownTurns);
   document.getElementById('sd-peace-treaty-cooldown').value = String(meta.peaceTreatyCooldownTurns);
   document.getElementById('sd-min-peace-negotiation-turns').value = String(meta.minPeaceNegotiationTurns);
   document.getElementById('sd-capitulation-acceptance-threshold').value = Number(meta.capitulationAcceptanceThreshold).toFixed(2);
@@ -6644,6 +6651,11 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const independenceCooldownTurns = Number(document.getElementById('sd-independence-cooldown').value);
+  if (!Number.isSafeInteger(independenceCooldownTurns) || independenceCooldownTurns < 0) {
+    errorEl.textContent = 'Independence Cooldown must be a non-negative integer (turns).';
+    return;
+  }
   const peaceTreatyCooldownTurns = parseInt(document.getElementById('sd-peace-treaty-cooldown').value, 10);
   if (!Number.isInteger(peaceTreatyCooldownTurns) || peaceTreatyCooldownTurns < 0) {
     errorEl.textContent = 'Peace Treaty cooldown must be a non-negative integer (turns).';
@@ -6732,6 +6744,7 @@ function saveScenarioDetails() {
   scenario.meta.quarterlyTurnsStartYearIsBC = document.getElementById('sd-quarterly-start-year-bc').checked;
   scenario.meta.timeProgression = timeProgression;
   scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
+  scenario.meta.independenceCooldownTurns = independenceCooldownTurns;
   scenario.meta.peaceTreatyCooldownTurns = peaceTreatyCooldownTurns;
   scenario.meta.minPeaceNegotiationTurns = minPeaceNegotiationTurns;
   scenario.meta.capitulationAcceptanceThreshold = capitulationAcceptanceThreshold;

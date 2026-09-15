@@ -368,6 +368,7 @@ export class SaveLoadService {
       gameSpeedId,
       tradeRouteEstablishmentTurns: tradeConnectionSystem?.getEstablishmentTurns(),
       capitulationAcceptanceThreshold: context.capitulationSystem?.getAcceptanceThreshold(),
+      independenceCooldownTurns: diplomacyManager.getIndependenceCooldownTurns(),
       peaceTreatyCooldownTurns: diplomacyManager.getPeaceTreatyCooldownTurns(),
       minPeaceNegotiationTurns: diplomacyManager.getMinPeaceNegotiationTurns(),
       originalCapitalCollapsePercent: context.combatSystem?.getOriginalCapitalCollapsePercent(),
@@ -476,6 +477,7 @@ export class SaveLoadService {
       lastOpenBordersChangeTurn: entry.relation.lastOpenBordersChangeTurn,
       lastEmbassyChangeTurn: entry.relation.lastEmbassyChangeTurn,
       lastTradeRelationsChangeTurn: entry.relation.lastTradeRelationsChangeTurn,
+      independenceSettlement: entry.relation.independenceSettlement ? { ...entry.relation.independenceSettlement } : null,
       peaceTreatyUntilTurn: entry.relation.peaceTreatyUntilTurn,
       militaryUnitsLostA: entry.relation.militaryUnitsLostA,
       militaryUnitsLostB: entry.relation.militaryUnitsLostB,
@@ -645,6 +647,7 @@ export class SaveLoadService {
     }
 
     SaveLoadService.applyUnits(state.units, context.unitManager);
+    context.diplomacyManager.setIndependenceCooldownTurns(state.independenceCooldownTurns);
     SaveLoadService.restoreDiplomacy(state.diplomacy, context.diplomacyManager);
     context.diplomacyManager.restoreVassalRelationships(state.vassalStates);
     context.jointWarSystem?.restore(state.jointWarEscalations);
@@ -1169,6 +1172,7 @@ export class SaveLoadService {
         lastOpenBordersChangeTurn: entry.lastOpenBordersChangeTurn,
         lastEmbassyChangeTurn: entry.lastEmbassyChangeTurn,
         lastTradeRelationsChangeTurn: entry.lastTradeRelationsChangeTurn,
+        independenceSettlement: entry.independenceSettlement ? { ...entry.independenceSettlement } : null,
         peaceTreatyUntilTurn: entry.peaceTreatyUntilTurn,
         lastWarTurn: entry.lastWarTurn,
         lastPeaceTurn: entry.lastPeaceTurn,

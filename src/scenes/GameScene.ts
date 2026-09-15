@@ -1382,6 +1382,9 @@ export class GameScene extends Phaser.Scene {
         data.savedState?.minPeaceNegotiationTurns ?? scenarioJson.meta?.minPeaceNegotiationTurns,
       ),
     );
+    diplomacyManager.setIndependenceCooldownTurns(
+      data.savedState ? data.savedState.independenceCooldownTurns : scenarioJson.meta?.independenceCooldownTurns,
+    );
     const mutualFoeAgreementSystem = new MutualFoeAgreementSystem(
       data.savedState?.mutualFoeAgreements ?? scenario.mutualFoeAgreements,
       [...runtimeScenarioJson.nations, ...(data.savedState?.nations ?? [])],
@@ -1662,7 +1665,7 @@ export class GameScene extends Phaser.Scene {
         category: 'diplomacy',
         message: `${vassalName} purchased independence from ${hostName} for `
           + `${event.goldTransferred.toLocaleString('en-US')} Gold. Relations were reconciled `
-          + `(hostility cleared, affinity restored).`,
+          + `(hostility cleared, affinity restored). Independence Cooldown: ${diplomacyManager.getIndependenceCooldownTurns()} turns; expires turn ${turnManager.getCurrentRound() + diplomacyManager.getIndependenceCooldownTurns()}.`,
       });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -6439,7 +6442,13 @@ export class GameScene extends Phaser.Scene {
       foreignTroopViolationSystem.handleRoundEnd(event.round);
     });
 
+    const getIndependenceBlockReason = (targetNationId: string): string | null => {
+      const remaining = diplomacyManager.getIndependenceProtectionRemainingTurns(humanNationIdForDiplomacy, targetNationId);
+      return remaining > 0 ? `Independence recognized — ${remaining} turns remaining` : null;
+    };
     const getPeaceTreatyBlockReason = (targetNationId: string): string | null => {
+      const independenceReason = getIndependenceBlockReason(targetNationId);
+      if (independenceReason) return independenceReason;
       if (diplomacyManager.isVassal(humanNationIdForDiplomacy)) {
         return 'A vassal state cannot declare war.';
       }
@@ -6474,16 +6483,17 @@ export class GameScene extends Phaser.Scene {
         targetNationId,
         turnManager.getCurrentRound(),
       );
-      if (!humanIsVassal && !isOwnVassal && remaining <= 0 && ceasefireRemaining <= 0) return;
+      const independenceReason = getIndependenceBlockReason(targetNationId);
+      if (!independenceReason && !humanIsVassal && !isOwnVassal && remaining <= 0 && ceasefireRemaining <= 0) return;
       const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
-      const reason = humanIsVassal
+      const reason = independenceReason ?? (humanIsVassal
         ? 'vassal status'
         : isOwnVassal
           ? 'the host-vassal protection relationship'
         : ceasefireRemaining > 0
         ? `active UN ceasefire for ${ceasefireRemaining} more turn${ceasefireRemaining === 1 ? '' : 's'}`
-        : `active peace treaty for ${remaining} more turn${remaining === 1 ? '' : 's'}`;
+        : `active peace treaty for ${remaining} more turn${remaining === 1 ? '' : 's'}`);
       logManager.info({
         nationIds: [humanNationIdForDiplomacy, targetNationId],
         category: 'diplomacy',

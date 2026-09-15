@@ -297,6 +297,7 @@ export interface SavedDiplomacyEntry {
   lastOpenBordersChangeTurn?: number | null;
   lastEmbassyChangeTurn?: number | null;
   lastTradeRelationsChangeTurn?: number | null;
+  independenceSettlement?: import('./independence').IndependenceSettlement | null;
   peaceTreatyUntilTurn?: number | null;
   /** @deprecated renamed to lastWarDeclarationTurn. */
   lastWarTurn?: number | null;
@@ -370,6 +371,8 @@ export interface SavedGameState {
   /** Active scenario capitulation rule. Optional for backward-compatible saves. */
   capitulationAcceptanceThreshold?: number;
   /** Future peace treaties use this duration; existing explicit expiries are unchanged. */
+  /** Purchased independence protection and AI mobilization duration; defaults to 100. */
+  independenceCooldownTurns?: number;
   peaceTreatyCooldownTurns?: number;
   /** Minimum war duration before peace can be proposed. Optional for older saves. */
   minPeaceNegotiationTurns?: number;
