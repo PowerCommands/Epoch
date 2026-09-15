@@ -81,3 +81,8 @@ export function airWeaponPosition(weapon: AirWeapon, age: number): AirPoint {
   if (weapon.kind === 'bomb') point.y = weapon.origin.y + (weapon.target.y - weapon.origin.y) * p * p;
   return point;
 }
+
+/** Apply damage after the final explosion flash (smoke may still linger). */
+export function airDamageApplyMs(plan: AirAttackPlan): number {
+  return plan.weapons.length ? Math.max(...plan.weapons.map(weapon => weapon.impactMs)) + 420 : plan.flightMs;
+}

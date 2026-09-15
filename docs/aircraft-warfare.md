@@ -1,6 +1,6 @@
 # Aircraft warfare
 
-The six existing fixed-wing aircraft now use bases and atomic air missions. Helicopter Gunship and strategic weapons retain their separate behavior. Aircraft statistics, costs, unlocks, resources, upkeep, quality and upgrade chains are unchanged; fighters apply a 0.35 strength multiplier to conventional strikes.
+The six existing fixed-wing aircraft now use bases and air missions. Helicopter Gunship and strategic weapons retain their separate behavior. Aircraft statistics, costs, unlocks, resources, upkeep, quality and upgrade chains are unchanged; fighters apply a 0.35 strength multiplier to conventional strikes.
 
 ## Playing
 
@@ -44,9 +44,9 @@ Legacy saves and scenario aircraft without metadata use the same nearest-base ru
 
 ## Architecture and persistence
 
-- `AirOperationsSystem` owns basing, reconciliation, transfer, interception and atomic mission resolution. `CombatSystem` delegates aircraft missions to it and retains actual conventional strike resolution, diplomacy integration, damage events and city-combat rules.
+- `AirOperationsSystem` owns basing, reconciliation, transfer, interception and mission resolution. `CombatSystem` delegates aircraft missions to it and retains actual conventional strike resolution, diplomacy integration, damage events and city-combat rules.
 - `UnitManager` maintains collision-free stationed aircraft, Carrier cargo links, removal and relocation notifications. Aircraft remain selectable at their bases but are not ordinary map occupants or ground-combat targets.
-- `AirMissionRenderer` consumes resolved flight events and animates disposable aircraft, weapons and impact smoke on the scene clock. `AirMissionAnimation` supplies artwork-specific engine anchors, headings and pure trajectory/timing calculations. Ground combat does not wait for these animations; autorun skips them. Visible paths are presentation of the already committed result.
+- `AirMissionRenderer` animates disposable aircraft, weapons and impact smoke on the scene clock. Launch spends the action immediately; animated strikes apply actual damage after the final explosion flash. No terrain copy or damage-covering overlay is created. Pending strikes are included in saves and resume on load. `AirMissionAnimation` supplies artwork-specific engine anchors, headings and pure trajectory/timing calculations. Autorun and invisible or disabled animations resolve strikes immediately. Ending a turn finishes outstanding strikes before the next nation acts.
 - `Unit.airBase` persists `{ kind: 'city' | 'carrier', id }` through the normal save/load path. Cargo, health, quality and consumed movement use existing serialization. A save during flight captures the completed mission, so no transient flight or interception state needs restoration.
 - City-building change notifications reconcile aircraft after capacity loss. Building upgrades add the replacement before removing its predecessor, so aircraft never encounter a temporary zero-capacity state.
 - AI production hints live in `ai/AIAirProduction.ts` and feed existing production, resource, upkeep and doctrine gates. Aircraft attack known targets and transfer toward active fronts, including available Carriers. Fighters receive higher production priority when other known nations possess aircraft. Ground defenses seek friendly cities exposed to known enemy air power.

@@ -196,6 +196,7 @@ export class CombatSystem {
     private readonly conquestDiagnosticLog?: (nationId: string, message: string) => void,
   ) {
     this.airOperations = new AirOperationsSystem(unitManager, cityManager, mapData, gridSystem, diplomacyManager, () => turnManager.getCurrentRound(), () => turnManager.getCurrentNation().id, (unit,x,y) => this.resolveAirStrike(unit,x,y), (unit,x,y) => !this.isUnitCombatBlocked(unit) && this.missionAttackPermission(unit,x,y), (ownerId,x,y) => this.canAirStrikeInfrastructure(ownerId,x,y));
+    turnManager.on('turnEnd', () => this.airOperations.finishPendingMissions());
     productionSystem.setAircraftProductionReason?.((cityId,item) => {
       const city = cityManager.getCity(cityId);
       return city && item.kind === 'unit' && item.unitType.aircraftRole ? this.airOperations.productionBlockReason(city, item.aircraftBase) : undefined;

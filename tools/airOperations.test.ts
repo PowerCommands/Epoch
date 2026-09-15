@@ -367,6 +367,8 @@ test('air strikes damage units, destroy improvements outright, and break buildin
   assert.ok(h.air.canTarget(bomber1, { x: 5, y: 10 }), 'improvement tile is targetable');
   assert.ok(h.air.mission(bomber1, 5, 10));
   assert.equal(farmTile.improvementId, undefined, 'improvement destroyed');
+  assert.equal(bomber1.movementPoints, 0);
+  assert.equal(h.air.mission(bomber1, 7, 10), false, 'infrastructure bombing uses the whole turn');
 
   // Building on an enemy city tile → left standing but marked broken.
   const buildingTile = h.map.tiles[10][8];            // owned by enemyCity
@@ -413,4 +415,87 @@ test('legacy city-only air buildings and their queues gain physical destinations
   apply([empty],h.cities,h.production,h.map,h.grid,'standard');
   assert.equal(h.map.tiles[10][10].buildingConstruction?.buildingId,AIR_BASE.id);
   assert.deepEqual(h.production.getQueue('standalone')[0].placement,{tileX:10,tileY:10});
+});
+
+test('animated strikes spend their action at launch and apply damage exactly once at impact', () => {
+  const h = harness();
+  const base = h.city(2, 10, 'a');
+  h.cities.getBuildings(base.id).add(AIR_BASE);
+  const target = h.spawn(WARRIOR, 8, 10, 'b');
+  const plane = h.spawn(STEALTH_BOMBER); h.air.reconcile();
+  h.air.onFlight(() => true);
+  assert.equal(h.air.mission(plane, 8, 10), true);
+  assert.equal(target.health, 100);
+  assert.equal(plane.movementPoints, 0);
+  assert.equal(h.air.mission(plane, 8, 10), false);
+  assert.deepEqual(h.air.getPendingMissions(), [{ unitId: plane.id, x: 8, y: 10 }]);
+  h.events[0].resolveImpact?.();
+  assert.ok(target.health < 100);
+  const health = target.health;
+  h.events[0].resolveImpact?.();
+  assert.equal(target.health, health);
+  assert.deepEqual(h.air.getPendingMissions(), []);
+});
+
+for (const type of [FIGHTER, BOMBER]) {
+  test(`${type.name} gets one infrastructure strike per turn and reloads next turn`, () => {
+    const h = harness();
+    const base = h.city(2, 10, 'a');
+    h.cities.getBuildings(base.id).add(AIR_BASE);
+    h.combat.setInfrastructureSabotageSystem(new InfrastructureSabotageSystem(h.map, h.cities, new WonderSystem(), h.nations, () => {}));
+    const plane = h.spawn(type); h.air.reconcile();
+    for (const x of [5, 6]) {
+      h.map.tiles[10][x].ownerId = 'b';
+      h.map.tiles[10][x].improvementId = 'farm';
+    }
+    assert.equal(h.air.mission(plane, 5, 10), true);
+    assert.equal(plane.movementPoints, 0);
+    assert.equal(h.air.mission(plane, 6, 10), false);
+    assert.equal(h.map.tiles[10][6].improvementId, 'farm');
+    h.units.resetMovementForOwner('a');
+    assert.equal(h.air.mission(plane, 6, 10), true);
+    assert.equal(h.map.tiles[10][6].improvementId, undefined);
+  });
+}
+
+for (const kind of ['city', 'building', 'improvement'] as const) {
+  test(`animated strike leaves ${kind} unchanged until impact`, () => {
+    const h = harness();
+    const base = h.city(2, 10, 'a'); h.cities.getBuildings(base.id).add(AIR_BASE);
+    const city = h.city(7, 10, 'b');
+    city.health = 80; // Existing damage stays in place until the new strike hits.
+    h.combat.setInfrastructureSabotageSystem(new InfrastructureSabotageSystem(h.map, h.cities, new WonderSystem(), h.nations, () => {}));
+    const tile = h.map.tiles[10][8];
+    if (kind === 'building') { tile.buildingId = GRANARY.id; h.cities.getBuildings(city.id).add(GRANARY); }
+    if (kind === 'improvement') { tile.ownerId = 'b'; tile.improvementId = 'farm'; }
+    const plane = h.spawn(BOMBER); h.air.reconcile();
+    h.air.onFlight(() => true);
+    assert.equal(h.air.mission(plane, kind === 'city' ? 7 : 8, 10), true);
+    assert.equal(city.health, 80);
+    if (kind === 'building') assert.equal(h.cities.getBuildings(city.id).isBroken(GRANARY.id), false);
+    if (kind === 'improvement') assert.equal(tile.improvementId, 'farm');
+    h.events[0].resolveImpact?.();
+    if (kind === 'city') assert.ok(city.health < 80);
+    if (kind === 'building') assert.equal(h.cities.getBuildings(city.id).isBroken(GRANARY.id), true);
+    if (kind === 'improvement') assert.equal(tile.improvementId, undefined);
+  });
+}
+
+test('saved pending missions resume once without rerolling interception or refunding movement', () => {
+  const h = harness();
+  const base = h.city(2, 10, 'a'); h.cities.getBuildings(base.id).add(AIR_BASE);
+  const target = h.spawn(WARRIOR, 8, 10, 'b');
+  const plane = h.spawn(BOMBER); h.air.reconcile();
+  h.air.onFlight(() => true);
+  h.air.mission(plane, 8, 10);
+  const pending = JSON.parse(JSON.stringify(h.air.getPendingMissions()));
+  assert.equal(target.health, 100, 'saving pending attack does not damage the target');
+  h.air.finishPendingMissions();
+  target.health = 100;
+  h.air.restorePendingMissions(pending);
+  assert.equal(target.health, 100);
+  assert.equal(plane.movementPoints, 0);
+  h.events.at(-1)?.resolveImpact?.();
+  assert.ok(target.health < 100);
+  assert.deepEqual(h.air.getPendingMissions(), []);
 });

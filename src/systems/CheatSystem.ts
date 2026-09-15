@@ -1,3 +1,4 @@
+import { getUrbanSlotAt } from './UrbanDevelopment';
 import type { AutoplaySystem } from './AutoplaySystem';
 import type { CityManager } from './CityManager';
 import type { CultureSystem } from './culture/CultureSystem';
@@ -315,10 +316,13 @@ export class CheatSystem {
         if (args.length !== 0) return 'Usage: heal [all [nation]]';
 
         const selection = context.selectionManager.getSelected();
-        if (!selection || selection.kind === 'tile') return 'No unit or city selected';
-
-        if (selection.kind === 'city') {
-          const { city } = selection;
+        if (!selection) return 'No unit or city selected';
+        const city = selection.kind === 'city' ? selection.city : selection.kind === 'tile'
+          ? context.cityManager.getCityAt(selection.tile.x, selection.tile.y)
+            ?? context.cityManager.getAllCities().find(candidate => candidate.settlementStage !== 'Village'
+              && getUrbanSlotAt(candidate, selection.tile))
+          : undefined;
+        if (city) {
           if (city.health >= CITY_BASE_HEALTH) return `${city.name} is already at full health`;
 
           city.health = CITY_BASE_HEALTH;
@@ -326,6 +330,7 @@ export class CheatSystem {
           return `Repaired ${city.name} to full health`;
         }
 
+        if (selection.kind !== 'unit') return 'No unit or city selected';
         const { unit } = selection;
         const maxHealth = unit.unitType.baseHealth;
         if (unit.health >= maxHealth) return `${unit.name} is already at full health`;

@@ -11,19 +11,21 @@ import { airMissionRoll, interceptionProfile } from '../data/airOperations';
 import { resolveRangedCombat } from './CombatResolver';
 
 export interface AirBaseSite extends GridCoord { base: AircraftBase; ownerId: string; name: string; capacity: number }
+export interface PendingAirMission { unitId: string; x: number; y: number }
 export interface AirFlightEvent {
   aircraft: Unit; origin: GridCoord; destination: GridCoord; kind: 'strike' | 'intercepted' | 'rebase';
+  resolveImpact?: () => void;
   destroyed: boolean; interceptor?: Unit; interceptorOrigin?: GridCoord;
 }
 const position = (unit: { tileX: number; tileY: number }): GridCoord => ({ x: unit.tileX, y: unit.tileY });
 const sameBase = (a: AircraftBase | undefined, b: AircraftBase) => a?.kind === b.kind && a.id === b.id;
 
-/** Authoritative basing and atomic missions; presentation consumes immutable route snapshots. */
+/** Authoritative basing and missions. Animated strikes resolve at impact. */
 export class AirOperationsSystem {
   private reconciling = false;
   private log: (ownerId: string, message: string) => void = (_owner,message) => console.info(message);
   setLogger(logger: (ownerId: string, message: string) => void): void { this.log = logger; }
-  private readonly listeners: ((event: AirFlightEvent) => void)[] = [];
+  private readonly listeners: ((event: AirFlightEvent) => boolean | void)[] = [];
   constructor(
     private readonly units: UnitManager, private readonly cities: CityManager,
     private readonly map: MapData, private readonly grid: IGridSystem,
@@ -43,12 +45,27 @@ export class AirOperationsSystem {
     });
     cities.onCityChanged(event => { if (event.reason === 'buildingsChanged' || event.reason === 'removed' || event.reason === 'ownershipTransferred') this.reconcile(); });
   }
-  onFlight(listener: (event: AirFlightEvent) => void): () => void {
+  onFlight(listener: (event: AirFlightEvent) => boolean | void): () => void {
     this.listeners.push(listener);
     return () => {
       const index = this.listeners.indexOf(listener);
       if (index >= 0) this.listeners.splice(index, 1);
     };
+  }
+  private readonly pendingMissions = new Map<() => void, PendingAirMission>();
+  /** Finish outstanding attacks before a turn boundary. */
+  finishPendingMissions(): void {
+    for (const resolve of [...this.pendingMissions.keys()]) resolve();
+  }
+  getPendingMissions(): PendingAirMission[] {
+    return [...this.pendingMissions.values()].map(mission => ({ ...mission }));
+  }
+  restorePendingMissions(missions: readonly PendingAirMission[]): void {
+    for (const mission of missions) {
+      const unit = this.units.getUnit(mission.unitId);
+      const origin = unit && this.baseFor(unit);
+      if (unit && origin && this.canTarget(unit, mission)) this.launchStrike(unit, origin, mission);
+    }
   }
   cityCapacity(city: City): number {
     return Math.max(0, ...this.cities.getBuildings(city.id).getAll().map(id => getBuildingById(id)?.aircraftCapacity ?? 0));
@@ -194,10 +211,27 @@ export class AirOperationsSystem {
       this.emit({ aircraft: unit, origin, destination: chosen.meeting, kind: 'intercepted', destroyed: !unit.isAlive(), interceptor: chosen.defender, interceptorOrigin: chosen.source });
       return true;
     }
-    const success = this.strike(unit,x,y);
-    if (success) this.emit({ aircraft: unit, origin, destination: target, kind: 'strike', destroyed: !unit.isAlive() });
-    return success;
+    return this.launchStrike(unit, origin, target);
   }
+  private launchStrike(unit: Unit, origin: GridCoord, target: GridCoord): boolean {
+    const { x, y } = target;
+    // Launch spends the action; damage is applied only when the animation reaches impact.
+    this.units.consumeAllMovement(unit.id);
+    let resolved = false;
+    const resolveImpact = () => {
+      if (resolved) return;
+      resolved = true;
+      this.pendingMissions.delete(resolveImpact);
+      // Another attack may already have removed the target or changed its owner.
+      if (unit.isAlive() && this.canTarget(unit, target)) this.strike(unit, x, y);
+    };
+    this.pendingMissions.set(resolveImpact, { unitId: unit.id, x, y });
+    const event: AirFlightEvent = { aircraft: unit, origin, destination: target, kind: 'strike', destroyed: false, resolveImpact };
+    // Headless, hidden and disabled animations resolve synchronously.
+    if (!this.emit(event)) resolveImpact();
+    return true;
+  }
+
   /** Ground defenses protect cities exposed to known enemy aircraft. */
   defensePost(unit: Unit, known: (x: number,y: number) => boolean = () => true): GridCoord | undefined {
     if (!unit.unitType.airDefense) return undefined;
@@ -256,5 +290,9 @@ export class AirOperationsSystem {
     }
     return path;
   }
-  private emit(event: AirFlightEvent): void { for (const listener of this.listeners) listener(event); }
+  private emit(event: AirFlightEvent): boolean {
+    let animated = false;
+    for (const listener of this.listeners) animated = listener(event) === true || animated;
+    return animated;
+  }
 }

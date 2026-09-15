@@ -6693,7 +6693,9 @@ export class GameScene extends Phaser.Scene {
     // separately with alliance context, so the generic line is skipped).
     let allianceWarSystem: AllianceWarSystem | null = null;
     new AirMissionRenderer(this, tileMap, combatSystem.airOperations, () => !isAutoplayActive() && humanNationId !== undefined,
-      canSeeTile, target => cityBannerRenderer.suppressAtTile(target.x, target.y));
+      canSeeTile, target => cityBannerRenderer.suppressAtTile(target.x, target.y),
+      event => event.kind === 'strike' && event.aircraft.ownerId === humanNationId
+        && canShowCity(event.destination.x, event.destination.y));
     // Subscribe before terrain refresh: preserve the old terrain during missile flight.
     new NuclearStrikeRenderer(this, tileMap, combatSystem.strategicWeapons, () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile);
     airBaseRenderer = new AirBaseRenderer(this, tileMap, combatSystem.airOperations, unitManager, cityManager, selectionManager, canSeeTile);

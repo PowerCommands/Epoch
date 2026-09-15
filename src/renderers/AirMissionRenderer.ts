@@ -4,7 +4,7 @@ import type { AirFlightEvent, AirOperationsSystem } from '../systems/AirOperatio
 import { getUnitSpriteKey } from '../utils/assetPaths';
 import { WORLD_EFFECT_DEPTH } from '../systems/rendering/WorldEffectDepths';
 import {
-  AIRCRAFT_ANIMATIONS, AIR_HEADING, AIR_SMOKE_MS, airPosition, airWeaponPosition,
+  AIRCRAFT_ANIMATIONS, AIR_HEADING, AIR_SMOKE_MS, airDamageApplyMs, airPosition, airWeaponPosition,
   clampAir, mixAir, planAirAttack,
   type AircraftAnimationProfile, type AirAttackPlan, type AirPoint, type AirWeapon,
 } from './AirMissionAnimation';
@@ -19,6 +19,7 @@ interface AircraftVisual {
 }
 interface Flight {
   kind: AirFlightEvent['kind'];
+  observed: boolean;
   targetTile: AirPoint;
   age: number;
   plan: AirAttackPlan;
@@ -29,9 +30,10 @@ interface Flight {
   graphics: Phaser.GameObjects.Graphics;
   smoke: Phaser.GameObjects.Image[][];
   restoreBadge?: () => void;
+  resolveImpact?: () => void;
 }
 
-/** Disposable, bounded presentation of already-resolved air missions. */
+/** Bounded flight animation; commits strike damage after the final explosion. */
 export class AirMissionRenderer {
   private readonly flights: Flight[] = [];
   private readonly unsubscribe: () => void;
@@ -44,14 +46,17 @@ export class AirMissionRenderer {
     private readonly enabled: () => boolean,
     private readonly visible: (x: number, y: number) => boolean,
     private readonly suppressBadge?: (target: AirPoint) => () => void,
+    // The player can watch their own strike against a known city outside current
+    // ground vision. This reveals only the mission visuals, never map occupants.
+    private readonly observeStrike: (event: AirFlightEvent) => boolean = () => false,
   ) {
     this.unsubscribe = air.onFlight(this.fly);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
   }
 
-  private readonly fly = (event: AirFlightEvent): void => {
-    if (this.disposed || !this.enabled()) return;
-    if (!this.visible(event.origin.x, event.origin.y) && !this.visible(event.destination.x, event.destination.y)) return;
+  private readonly fly = (event: AirFlightEvent): boolean => {
+    if (this.disposed || !this.enabled()) { return false; }
+    if (!this.visible(event.origin.x, event.origin.y) && !this.visible(event.destination.x, event.destination.y) && !this.observeStrike(event)) { return false; }
     const target = this.tileMap.tileToWorld(event.destination.x, event.destination.y);
     const plan = planAirAttack(target, event.aircraft.unitType.aircraftRole ?? 'fighter', event.kind !== 'strike', this.scene.cameras.main.worldView);
     if (event.kind === 'rebase') {
@@ -61,7 +66,7 @@ export class AirMissionRenderer {
       plan.endMs = plan.flightMs;
     }
     if (this.flights.length >= MAX_FLIGHTS) this.destroyFlight(this.flights.shift()!);
-    const flight: Flight = { kind: event.kind, targetTile: { ...event.destination }, age: 0, plan,
+    const flight: Flight = { kind: event.kind, observed: event.kind === 'strike' && this.observeStrike(event), targetTile: { ...event.destination }, age: 0, plan, resolveImpact: event.resolveImpact,
       aircraft: this.createAircraft(event.aircraft.unitType.id, 'aircraft-attack'), destroyed: event.destroyed,
       graphics: this.scene.add.graphics().setDepth(WORLD_EFFECT_DEPTH.airImpact).setName('air-mission-weapons'), smoke: [] };
     if (event.kind === 'intercepted' && event.interceptor && event.interceptorOrigin) {
@@ -76,6 +81,7 @@ export class AirMissionRenderer {
     this.flights.push(flight);
     if (this.flights.length === 1) this.scene.events.on(Phaser.Scenes.Events.UPDATE, this.update, this);
     this.draw(flight);
+    return true;
   };
 
   private createAircraft(id: string, name: string): AircraftVisual {
@@ -107,8 +113,10 @@ export class AirMissionRenderer {
   private draw(flight: Flight): void {
     const { plan, age, aircraft, graphics: g } = flight;
     g.clear();
+    const targetVisible = flight.observed || this.visible(flight.targetTile.x, flight.targetTile.y);
+    if (age >= airDamageApplyMs(plan) || !targetVisible) { flight.resolveImpact?.(); flight.resolveImpact = undefined; }
     if (plan.weapons.length && age >= plan.weapons[0].impactMs - 100
-      && this.visible(flight.targetTile.x, flight.targetTile.y) && !flight.restoreBadge) {
+      && targetVisible && !flight.restoreBadge) {
       flight.restoreBadge = this.suppressBadge?.(flight.targetTile);
     }
     const point = airPosition(plan, age);
@@ -118,21 +126,21 @@ export class AirMissionRenderer {
       // Break off before reaching the objective; no weapons, blast or destruction flash.
       alpha *= 1 - clampAir((age - plan.passMs + 210) / (flight.destroyed ? 170 : 340));
     }
-    this.drawAircraft(aircraft, point, heading, alpha, age, plan.altitude);
+    this.drawAircraft(aircraft, point, heading, alpha, age, plan.altitude, flight.observed);
     if (flight.kind === 'intercepted') this.drawInterception(flight);
     for (let i = 0; i < plan.weapons.length; i++) {
       const weapon = plan.weapons[i];
-      if (age >= weapon.releaseMs && age < weapon.impactMs) this.drawWeapon(g, weapon, age);
+      if (age >= weapon.releaseMs && age < weapon.impactMs) this.drawWeapon(g, weapon, age, flight.observed);
       const smoke = flight.smoke[i];
       smoke.forEach(puff => puff.setVisible(false));
       if (age >= weapon.impactMs && age < weapon.impactMs + AIR_SMOKE_MS
-        && this.visible(flight.targetTile.x, flight.targetTile.y)) this.drawImpact(g, weapon.target, age - weapon.impactMs, smoke);
+        && targetVisible) this.drawImpact(g, weapon.target, age - weapon.impactMs, smoke);
     }
   }
 
-  private drawAircraft(visual: AircraftVisual, point: AirPoint, heading: number, alpha: number, age: number, altitude: number): void {
+  private drawAircraft(visual: AircraftVisual, point: AirPoint, heading: number, alpha: number, age: number, altitude: number, observed = false): void {
     const { image, shadow, engines: g, profile } = visual;
-    const shown = alpha > 0 && this.pointVisible({ x: point.x, y: point.y + altitude });
+    const shown = alpha > 0 && (observed || this.pointVisible({ x: point.x, y: point.y + altitude }));
     image.setVisible(shown); shadow.setVisible(shown); g.clear().setVisible(shown);
     if (!shown) return;
     const bank = Math.sin(age * .003) * .025;
@@ -161,17 +169,17 @@ export class AirMissionRenderer {
     g.restore();
   }
 
-  private drawWeapon(g: Phaser.GameObjects.Graphics, weapon: AirWeapon, age: number): void {
+  private drawWeapon(g: Phaser.GameObjects.Graphics, weapon: AirWeapon, age: number, observed = false): void {
     const point = airWeaponPosition(weapon, age);
     if (weapon.kind === 'missile') {
       for (let i = 1; i <= 12; i++) {
         const earlier = age - i * 15;
         if (earlier < weapon.releaseMs) break;
         const trail = airWeaponPosition(weapon, earlier);
-        if (this.pointVisible(trail)) g.fillStyle(0xddd9c9, .36 * (1 - i / 13)).fillCircle(trail.x, trail.y, 1 + i * .21);
+        if (observed || this.pointVisible(trail)) g.fillStyle(0xddd9c9, .36 * (1 - i / 13)).fillCircle(trail.x, trail.y, 1 + i * .21);
       }
     }
-    if (!this.pointVisible(point)) return;
+    if (!observed && !this.pointVisible(point)) return;
     const next = airWeaponPosition(weapon, age + 1);
     const angle = Math.atan2(next.y - point.y, next.x - point.x);
     g.save(); g.translateCanvas(point.x, point.y); g.rotateCanvas(angle);
@@ -247,6 +255,7 @@ export class AirMissionRenderer {
   }
 
   private destroyFlight(flight: Flight): void {
+    flight.resolveImpact?.();
     flight.restoreBadge?.();
     for (const visual of [flight.aircraft, flight.interceptor]) {
       visual?.image.destroy(); visual?.engines.destroy(); visual?.shadow.destroy();

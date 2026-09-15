@@ -403,6 +403,7 @@ export interface SavedGameState {
   nations: SavedNation[];
   cities: SavedCity[];
   units: SavedUnit[];
+  pendingAirMissions?: import('../systems/AirOperationsSystem').PendingAirMission[];
   diplomacy: SavedDiplomacyEntry[];
   /** Persistent vassal -> host relationships. Optional for older saves. */
   vassalStates?: VassalRelationship[];

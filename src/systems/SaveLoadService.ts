@@ -397,6 +397,7 @@ export class SaveLoadService {
       nations,
       cities,
       units,
+      pendingAirMissions: unitManager.airOperations?.getPendingMissions(),
       diplomacy,
       vassalStates: diplomacyManager.getAllVassalRelationships(),
       pendingPeaceProposals: diplomacyManager.getPendingPeaceProposals(),
@@ -694,6 +695,7 @@ export class SaveLoadService {
     context.luckyLoserTurningPointSystem?.restore(state.luckyLoserTurningPoint);
     context.culturalJealousySystem?.restore(state.culturalJealousyTurningPoint);
     context.unluckyWinnerTurningPointSystem?.restore(state.unluckyWinnerTurningPoint);
+    context.unitManager.airOperations?.restorePendingMissions(state.pendingAirMissions ?? []);
   }
 
   private static applyWonders(wonders: SavedWonder[], wonderSystem: WonderSystem): void {

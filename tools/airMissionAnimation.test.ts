@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ALL_UNIT_TYPES } from '../src/data/units';
-import { AIRCRAFT_ANIMATIONS, AIR_SMOKE_MS, airPosition, airWeaponPosition, planAirAttack } from '../src/renderers/AirMissionAnimation';
+import { AIRCRAFT_ANIMATIONS, AIR_SMOKE_MS, airDamageApplyMs, airPosition, airWeaponPosition, planAirAttack } from '../src/renderers/AirMissionAnimation';
 
 const view = { x: 0, y: 0, width: 1280, height: 720 };
 const target = { x: 640, y: 360 };
@@ -61,5 +61,14 @@ test('edge targets and zoomed-out views leave enough approach time for weapon re
     assert.ok(plan.weapons.every(weapon => weapon.releaseMs >= 0 && weapon.releaseMs < weapon.impactMs));
     assert.ok(plan.start.x > width || plan.start.y < 0);
     assert.ok(plan.end.x < 0 || plan.end.y > 720);
+  }
+});
+
+test('damage appears after the final explosion flash, independently of aircraft departure', () => {
+  for (const type of aircraft) {
+    const plan = planAirAttack(target, type.aircraftRole!, false, view);
+    const finalImpact = Math.max(...plan.weapons.map(weapon => weapon.impactMs));
+    assert.equal(airDamageApplyMs(plan), finalImpact + 420);
+    assert.ok(airDamageApplyMs(plan) < plan.endMs);
   }
 });

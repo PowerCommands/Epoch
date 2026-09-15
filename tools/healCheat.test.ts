@@ -13,6 +13,7 @@ interface FakeNation {
 function makeCheats(
   selection: unknown,
   options: {
+    cities?: City[];
     humanNationId?: string;
     nations?: FakeNation[];
     unitsByOwner?: Record<string, Unit[]>;
@@ -33,7 +34,10 @@ function makeCheats(
       notifyDamaged: (unit: Unit) => { changedUnits.push(unit); },
       getUnitsByOwner: (ownerId: string) => unitsByOwner[ownerId] ?? [],
     },
-    cityManager: { notifyHealthChanged: (city: City) => { changedCities.push(city); } },
+    cityManager: {
+      getCityAt: (x: number, y: number) => options.cities?.find(city => city.tileX === x && city.tileY === y),
+      getAllCities: () => options.cities ?? [],
+      notifyHealthChanged: (city: City) => { changedCities.push(city); } },
   } as unknown as GameContext;
 
   return { cheats: new CheatSystem(context), changedUnits, changedCities };
@@ -184,3 +188,13 @@ test('heal completes the all keyword and then nation names', () => {
   assert.ok(cheats.getCompletions('heal ').some((suggestion) => suggestion.value === 'all'));
   assert.ok(cheats.getCompletions('heal all ').some((suggestion) => suggestion.value === 'china'));
 });
+
+for (const settlementStage of ['Town', 'City', 'Metropolis'] as const) {
+  test(`heal resolves a selected urban tile in a ${settlementStage}`, () => {
+    const city = { id: 'city', name: 'London', health: 40, tileX: 5, tileY: 5, settlementStage } as City;
+    const { cheats, changedCities } = makeCheats({ kind: 'tile', tile: { x: 6, y: 5 } }, { cities: [city] });
+    assert.equal(cheats.execute('heal'), 'Repaired London to full health');
+    assert.equal(city.health, 200);
+    assert.deepEqual(changedCities, [city]);
+  });
+}
