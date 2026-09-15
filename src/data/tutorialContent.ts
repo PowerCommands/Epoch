@@ -198,9 +198,18 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         kind: 'list',
         items: [
           'Cities expand their cultural borders outward as they grow',
-          'Tiles and resources inside your borders become available to work',
+          'City-owned tiles and their resources become available to work; Territorial Claims do not',
         ],
       },
+      { kind: 'heading', text: 'Surveyors and Territorial Claims' },
+      { kind: 'paragraph', text: 'Early Empire unlocks the Surveyor (100 Production). Move it onto eligible neutral land within 10 hex tiles of the center of any city you own, then choose Claim Territory. This costs 200 Gold and permanently consumes the Surveyor. Only human players can create Territorial Claims; AI nations still respect them and may absorb them through city expansion or tile purchase.' },
+      { kind: 'list', items: [
+        'A Territorial Claim belongs to your nation, not a city. It gives no yields or natural or strategic resources, cannot be worked or improved merely because it is claimed, and does not count toward any city’s tile maximum.',
+        'Foreign Settlers cannot found directly on your claim. You may found your own city there under the normal founding rules. Foreign movement follows the same Open Borders and wartime access rules as ordinary national territory.',
+        'Claims appear in a lighter tint of the nation’s primary color without normal territorial border lines.',
+        'City territory takes precedence over claims. Actual organic expansion or tile purchase can absorb a claim within the acquiring city’s normal radius: Village 3, Town 4, City 5, Metropolis 6 hexes. Being inside that radius alone does not remove a claim.',
+        'Acquiring another nation’s claim causes Territorial Claim Violated: Trust −10, Hostility +10, Suspicion +5. Deliberate purchases warn you before confirmation; organic growth happens automatically. Absorbing your own claim causes no incident.',
+      ] },
       { kind: 'heading', text: 'City Defense' },
       { kind: 'paragraph', text: 'Every city begins with 25 City Defense. Fortifications are produced inside the city and do not occupy map tiles. Walls, Castle and Arsenal each add +25% City Defense, stacking additively to 31, 37 and 43 effective Defense as the city reaches fortification levels 1, 2 and 3.' },
       {

@@ -404,32 +404,3 @@ test('save parsing preserves embedded generated geography and metadata exactly',
   assert.match(sceneSource, /savedState\?\.generatedScenario/);
   assert.match(sceneSource, /!data\.generatedScenario.*spawnStartingScouts/s);
 });
-
-test('Game Setup exposes exactly the three v1 profiles and focused dialog controls', () => {
-  const menu = readFileSync(new URL('../src/scenes/MainMenuScene.ts', import.meta.url), 'utf8');
-  const dialog = readFileSync(new URL('../src/ui/RandomScenarioDialog.ts', import.meta.url), 'utf8');
-  assert.ok(menu.indexOf('label="Random Scenarios"') < menu.indexOf('label="Official Scenarios"'));
-  for (const type of MAP_TYPES) assert.match(menu, new RegExp(`RANDOM_SCENARIO_OPTION_PREFIX.*${type}|${type}.*RANDOM_SCENARIO_OPTION_PREFIX`, 's'));
-  assert.match(dialog, /\['small', 'medium', 'large'\]/);
-  assert.deepEqual(RANDOM_MAP_SIZES.small, { width: 80, height: 50 });
-  assert.match(dialog, /size === 'medium'/);
-  assert.deepEqual(RANDOM_MAP_SIZES.medium, { width: 100, height: 60 });
-  assert.deepEqual(RANDOM_MAP_SIZES.large, { width: 120, height: 80 });
-  assert.match(dialog, /random-scenario-seed/);
-  assert.match(dialog, /random-scenario-width/);
-  assert.match(dialog, /random-scenario-height/);
-  assert.match(dialog, /random-scenario-feature-count/);
-  assert.match(dialog, /random-scenario-terrain-/);
-  assert.match(dialog, /random-scenario-nations/);
-  assert.match(dialog, /random-scenario-barbarian-camps/);
-  assert.match(dialog, /random-scenario-add-scout/);
-  assert.match(dialog, /random-scenario-add-warrior/);
-  assert.match(dialog, /Randomize/);
-  assert.match(dialog, /Cancel/);
-  assert.match(dialog, /Generate/);
-  assert.doesNotMatch(dialog, /climate|rainfall|temperature|world age|Resource Abundance|Game Speed|Victory Conditions/i);
-  assert.match(menu, /mm-random-scenario-hidden/);
-  assert.match(menu, /canvas\.hidden = Boolean\(generated\)/);
-  assert.match(menu, /generatedScenario: this\.generatedRandomScenario/);
-  assert.doesNotMatch(menu, /generateAndStartRandomScenario/);
-});

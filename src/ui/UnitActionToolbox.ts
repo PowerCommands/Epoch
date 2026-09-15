@@ -1,10 +1,11 @@
+import { TERRITORIAL_CLAIM_RULES } from '../data/territorialClaims';
 import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import type { Unit } from '../entities/Unit';
 import { hasCargoCapacity } from '../data/units';
 import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { UnitUpgradePreview, UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 
-export type UnitActionMode = 'rebase' | 'loadWeapon' | 'payload' | 'nuclearPayload' | 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'dig' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair' | 'intel' | 'debark';
+export type UnitActionMode = 'claimTerritory' | 'rebase' | 'loadWeapon' | 'payload' | 'nuclearPayload' | 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'dig' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair' | 'intel' | 'debark';
 
 /** Recon unit types eligible for Auto Explore (Scout, Scout Boat, and future recon). */
 function isReconUnit(unit: Unit): boolean {
@@ -27,6 +28,7 @@ export interface UnitActionViewState {
 }
 
 export const ACTIONS: readonly UnitActionDefinition[] = [
+  { mode: 'claimTerritory', label: 'Claim Territory', isAvailable: unit => unit.unitType.id === 'surveyor' },
   { mode: 'rebase', label: 'Rebase', isAvailable: unit => !!unit.unitType.aircraftRole && unit.movementPoints > 0 },
   { mode: 'loadWeapon', label: 'Load Weapon', isAvailable: unit => !!STRATEGIC_WEAPONS[unit.unitType.id] && !unit.carriedByUnitId },
   { mode: 'nuclearPayload', label: 'Select Nuclear Payload', isAvailable: unit => unit.unitType.allowedCargoUnitIds?.some(id => STRATEGIC_WEAPONS[id]?.nuclear) === true && unit.cargoUnitIds.length > 0 },
@@ -148,12 +150,17 @@ type DebarkAvailabilityProvider = {
   getDebarkPreview(unit: Unit): DebarkPreview;
 };
 
-export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['rebase', 'loadWeapon', 'payload', 'nuclearPayload', 'move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'dig', 'repair', 'intel', 'debark', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
+export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['rebase', 'loadWeapon', 'payload', 'nuclearPayload', 'move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'dig', 'repair', 'intel', 'debark', 'claimTerritory', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
 
 // LEGACY: this class still owns shared action state/mode rules, but its HTML
 // rendering path is no longer mounted in active gameplay. Phaser HUD is the
 // authoritative interaction layer.
 export class UnitActionToolbox {
+  private claimProvider: { getClaimPreview(unit: Unit): { canClaim: boolean; reason?: string } } | null = null;
+  setClaimAvailabilityProvider(provider: NonNullable<UnitActionToolbox['claimProvider']>): void {
+    this.claimProvider = provider;
+    this.refresh();
+  }
   private selectedUnit: Unit | null = null;
   private mode: UnitActionMode = 'move';
   private root: HTMLElement | null = null;
@@ -261,7 +268,7 @@ export class UnitActionToolbox {
     if (
       mode === 'sleep' || mode === 'dismiss' || mode === 'upgrade' || mode === 'explore'
       || mode === 'destroyImprovement' || mode === 'destroyBuilding' || mode === 'repair'
-      || mode === 'intel' || mode === 'debark'
+      || mode === 'intel' || mode === 'debark' || mode === 'claimTerritory'
     ) {
       this.triggerMode(mode);
       return;
@@ -308,7 +315,7 @@ export class UnitActionToolbox {
       // Keep a resolved, locked Build action visible so its tooltip explains the technology.
       const keepDisabled = ((action.mode === 'build' || action.mode === 'dig')
         ? preview?.improvement !== undefined && (action.isAvailable(unit) || preview.transportUnitId === unit.id)
-        : action.isAvailable(unit) && (action.mode === 'debark' || (action.mode === 'ranged' && !!STRATEGIC_WEAPONS[unit.unitType.id])))
+        : action.isAvailable(unit) && (action.mode === 'claimTerritory' || action.mode === 'debark' || (action.mode === 'ranged' && !!STRATEGIC_WEAPONS[unit.unitType.id])))
         && (action.mode !== 'build' || preview?.improvement?.requiredBuilderCapability !== 'dig');
       if (!isAvailable && !keepDisabled) continue;
 
@@ -361,7 +368,7 @@ export class UnitActionToolbox {
       const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview, debarkPreview);
       const keepDisabled = ((action.mode === 'build' || action.mode === 'dig')
         ? preview?.improvement !== undefined && (action.isAvailable(unit) || preview.transportUnitId === unit.id)
-        : action.isAvailable(unit) && (action.mode === 'debark' || (action.mode === 'ranged' && !!STRATEGIC_WEAPONS[unit.unitType.id])))
+        : action.isAvailable(unit) && (action.mode === 'claimTerritory' || action.mode === 'debark' || (action.mode === 'ranged' && !!STRATEGIC_WEAPONS[unit.unitType.id])))
         && (action.mode !== 'build' || preview?.improvement?.requiredBuilderCapability !== 'dig');
       if (!isAvailable && !keepDisabled) continue;
 
@@ -408,6 +415,7 @@ export class UnitActionToolbox {
       && buildPreview.improvement?.requiredBuilderCapability === 'dig'
       && buildPreview.transportUnitId === unit.id;
     if (!action.isAvailable(unit) && !isCargoDig) return false;
+    if (action.mode === 'claimTerritory') return this.claimProvider?.getClaimPreview(unit).canClaim === true;
     if (action.mode === 'ranged' && (unit.unitType.aircraftRole || STRATEGIC_WEAPONS[unit.unitType.id])) return unit.movementPoints > 0;
     if (action.mode === 'dismiss' && this.dismissAvailabilityProvider?.getCargoForTransport(unit) !== undefined) {
       return false;
@@ -492,6 +500,9 @@ export class UnitActionToolbox {
       return this.selectedUnit.movementPoints <= 0
         ? 'No actions remaining. Newly produced or moved weapons must wait until your next turn.'
         : 'Launch at a map coordinate within range, including fog of war. Hidden units are not revealed. Requires a valid launch platform.';
+    }
+    if (action.mode === 'claimTerritory' && this.selectedUnit) {
+      return this.claimProvider?.getClaimPreview(this.selectedUnit).reason ?? `Establish one Territorial Claim for ${TERRITORIAL_CLAIM_RULES.goldCost} Gold. Consumes the Surveyor; provides no yields or resources.`;
     }
     if (action.mode === 'dismiss') {
       const unit = this.selectedUnit;

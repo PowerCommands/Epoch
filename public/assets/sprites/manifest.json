@@ -4277,6 +4277,12 @@
           "size": 60927
         },
         {
+          "name": "surveyor.png",
+          "path": "/assets/sprites/units/surveyor.png",
+          "type": "PNG",
+          "size": 47214
+        },
+        {
           "name": "swordsman.png",
           "path": "/assets/sprites/units/swordsman.png",
           "type": "PNG",

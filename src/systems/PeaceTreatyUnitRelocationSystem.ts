@@ -1,3 +1,4 @@
+import { getPoliticalOwnerId } from './TerritorialClaimSystem';
 import type { Unit } from '../entities/Unit';
 import type { MapData, Tile } from '../types/map';
 import type { DiplomacyManager } from './DiplomacyManager';
@@ -20,7 +21,7 @@ export class PeaceTreatyUnitRelocationSystem {
   handleWarEnded(a: string, b: string): void {
     for (const unit of [...this.units.getUnitsByOwner(a), ...this.units.getUnitsByOwner(b)]) {
       const tile = this.map.tiles[unit.tileY]?.[unit.tileX];
-      if (tile?.ownerId !== (unit.ownerId === a ? b : a)) continue;
+      if (!tile || getPoliticalOwnerId(tile) !== (unit.ownerId === a ? b : a)) continue;
       this.relocate(unit, tile);
     }
   }
@@ -29,9 +30,11 @@ export class PeaceTreatyUnitRelocationSystem {
   recoverStrandedUnits(round: number): void {
     for (const unit of this.units.getAllUnits()) {
       const tile = this.map.tiles[unit.tileY]?.[unit.tileX];
-      if (!tile?.ownerId || tile.ownerId === unit.ownerId) continue;
-      if (this.diplomacy.getState(unit.ownerId, tile.ownerId) === 'WAR') continue;
-      if (!this.diplomacy.isPeaceTreatyActive(unit.ownerId, tile.ownerId, round)) continue;
+      if (!tile) continue;
+      const ownerId = getPoliticalOwnerId(tile);
+      if (!ownerId || ownerId === unit.ownerId) continue;
+      if (this.diplomacy.getState(unit.ownerId, getPoliticalOwnerId(tile)!) === 'WAR') continue;
+      if (!this.diplomacy.isPeaceTreatyActive(unit.ownerId, ownerId, round)) continue;
       this.relocate(unit, tile);
     }
   }
@@ -60,7 +63,7 @@ export class PeaceTreatyUnitRelocationSystem {
         pending.push(tile);
         if (!canUnitEndMovementOnTile(unit, tile, nation)) continue;
         if (this.units.getUnitAt(tile.x, tile.y) !== null) continue;
-        if (tile.ownerId && this.diplomacy.getState(unit.ownerId, tile.ownerId) === 'WAR') continue;
+        if (getPoliticalOwnerId(tile) && this.diplomacy.getState(unit.ownerId, getPoliticalOwnerId(tile)!) === 'WAR') continue;
         if (!this.canEnterPeacefully(unit, tile)) continue;
         return tile;
       }

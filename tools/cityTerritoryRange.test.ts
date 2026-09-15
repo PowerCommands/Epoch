@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { getGameSpeedById, scaleGameSpeedCost } from '../src/data/gameSpeeds.ts';
 import { City } from '../src/entities/City.ts';
 import {
-  CITY_CLAIM_RANGE,
+  getCityClaimRange,
   CityTerritorySystem,
   type CityTileCoord,
 } from '../src/systems/CityTerritorySystem.ts';
@@ -35,7 +35,7 @@ function assertMatchesWholeMapReference(city: City, mapData: MapData): void {
     .flat()
     .filter((tile) => (
       tile.ownerId === city.ownerId
-      && grid.getDistance(cityCenter(city), tile) <= CITY_CLAIM_RANGE
+      && grid.getDistance(cityCenter(city), tile) <= getCityClaimRange(city)
     )).length;
   const expectedCost = scaleGameSpeedCost(
     5 + expectedOwnedCount * 2,
@@ -75,7 +75,7 @@ function referenceClaimableTiles(
       if (owned.has(`${tile.x},${tile.y}`)) return false;
       if (tile.ownerId !== undefined) return false;
       const distance = grid.getDistance(cityCenter(city), tile);
-      return distance >= 2 && distance <= CITY_CLAIM_RANGE;
+      return distance >= 2 && distance <= getCityClaimRange(city);
     })
     .map((tile) => ({ x: tile.x, y: tile.y }))
     .sort(compareCoords);
@@ -104,12 +104,12 @@ function seedOwnership(city: City, mapData: MapData): void {
   for (const row of mapData.tiles) {
     for (const tile of row) {
       const distance = new HexGridSystem().getDistance(cityCenter(city), tile);
-      if (distance <= 1 || (distance <= CITY_CLAIM_RANGE && (tile.x + tile.y) % 7 === 0)) {
+      if (distance <= 1 || (distance <= getCityClaimRange(city) && (tile.x + tile.y) % 7 === 0)) {
         tile.ownerId = OWNER_ID;
         city.ownedTileCoords.push({ x: tile.x, y: tile.y });
-      } else if (distance <= CITY_CLAIM_RANGE && (tile.x * 3 + tile.y) % 11 === 0) {
+      } else if (distance <= getCityClaimRange(city) && (tile.x * 3 + tile.y) % 11 === 0) {
         tile.ownerId = 'nation_b';
-      } else if (distance > CITY_CLAIM_RANGE && (tile.x + tile.y) % 5 === 0) {
+      } else if (distance > getCityClaimRange(city) && (tile.x + tile.y) % 5 === 0) {
         tile.ownerId = OWNER_ID;
       }
     }

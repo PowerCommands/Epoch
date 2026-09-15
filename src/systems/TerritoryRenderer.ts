@@ -1,3 +1,4 @@
+import { getTerritorialClaimTint } from './TerritorialClaimSystem';
 import Phaser from 'phaser';
 import { TileMap } from './TileMap';
 import { NationManager } from './NationManager';
@@ -51,6 +52,7 @@ export class TerritoryRenderer {
   private readonly tileMap: TileMap;
   private readonly nationManager: NationManager;
   private readonly mapData: MapData;
+  private readonly claimGfx: Phaser.GameObjects.Graphics;
   private readonly borderGfx: Phaser.GameObjects.Graphics;
   private mode: 'normal' | 'cityView' = 'normal';
 
@@ -82,6 +84,7 @@ export class TerritoryRenderer {
     this.tileMap = tileMap;
     this.nationManager = nationManager;
     this.mapData = mapData;
+    this.claimGfx = scene.add.graphics().setDepth(BORDER_DEPTH - 0.1);
     this.borderGfx = scene.add.graphics().setDepth(BORDER_DEPTH);
     this.ownerSnapshot = new Int32Array(mapData.width * mapData.height).fill(-1);
   }
@@ -120,6 +123,7 @@ export class TerritoryRenderer {
   shutdown(): void {
     this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.handleFlush, this);
     this.borderGfx.destroy();
+    this.claimGfx.destroy();
   }
 
   // ─── Flush pipeline ───────────────────────────────────────────────────────
@@ -210,6 +214,15 @@ export class TerritoryRenderer {
 
   private repaintFromActiveSegments(): void {
     this.borderGfx.clear();
+    this.claimGfx.clear();
+    for (const row of this.mapData.tiles) for (const tile of row) {
+      if (tile.ownerId !== undefined || tile.territorialClaimNationId === undefined) continue;
+      if (this.visibilityPredicate && !this.visibilityPredicate(tile.x, tile.y)) continue;
+      const color = this.nationManager.getNation(tile.territorialClaimNationId)?.color;
+      if (color === undefined) continue;
+      this.claimGfx.fillStyle(getTerritorialClaimTint(color), 0.4);
+      this.claimGfx.fillPoints(this.tileMap.getTileOutlinePoints(tile.x, tile.y).map(p => new Phaser.Math.Vector2(p.x, p.y)), true);
+    }
     // Opaque round caps seal the joins without darker overlap patches.
     const radius = this.getBorderWidth() / 2;
     for (const segment of this.activeSegments.values()) {

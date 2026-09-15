@@ -1,3 +1,4 @@
+import { absorbTerritorialClaim } from './TerritorialClaimSystem';
 import { reserveUrbanSlots } from './UrbanDevelopment';
 import type { City, SettlementStage } from '../entities/City';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
@@ -263,6 +264,8 @@ export class CityTerritorySystem {
     const tile = this.getTile(mapData, coord.x, coord.y);
     if (!tile) return false;
     if (tile.ownerId !== undefined) return false;
+    if (tile.territorialClaimNationId !== undefined && tile.territorialClaimNationId !== city.ownerId
+      && this.getExpansionRingDistance(city, tile) > getCityClaimRange(city)) return false;
     if (city.ownedTileCoords.some((existing) => existing.x === coord.x && existing.y === coord.y)) {
       return false;
     }
@@ -315,6 +318,7 @@ export class CityTerritorySystem {
       return false;
     }
     tile.ownerId = city.ownerId;
+    absorbTerritorialClaim(mapData, tile, city.ownerId);
     city.ownedTileCoords = this.normalizeCoords([
       ...city.ownedTileCoords,
       { x: tile.x, y: tile.y },

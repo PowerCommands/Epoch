@@ -1,3 +1,4 @@
+import { TERRITORIAL_CLAIM_RULES } from './territorialClaims';
 import { describeStrategicWeapon, STRATEGIC_WEAPONS } from './strategicWeapons';
 import type { AllegianceType, FoodUpkeep, UnitCategory, UnitType } from '../entities/UnitType';
 import type { Era } from './technologies';
@@ -233,6 +234,8 @@ export const GIANT_DEATH_ROBOT = unit({ id: 'giant_death_robot', name: 'Giant De
 export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Cruiser', era: 'information', cost: 425, combatStrength: 83, rangedStrength: 100, range: 13, movement: 7, category: 'naval_ranged', isNaval: true, upkeepGold: 15, foodUpkeep: 3 }); // raised: top-tier naval ranged should match battleship/carrier tier, 9→15. High food upkeep: major capital ship
 
 export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 45, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2, serviceLifeRounds: 50 }); // renaissance capacity (2); charges are capped to 1 at build time until the owner reaches the renaissance era. Expires for AI nations after 50 rounds so stranded workers (small lakes/islands) don't loiter forever
+export const SURVEYOR = unit({ id: 'surveyor', name: 'Surveyor', era: 'ancient', cost: TERRITORIAL_CLAIM_RULES.productionCost, combatStrength: 0, movement: 2, category: 'civilian', description: `Establishes one Territorial Claim for ${TERRITORIAL_CLAIM_RULES.goldCost} Gold within ${TERRITORIAL_CLAIM_RULES.maxCityDistance} hexes of an owned city. Consumed on use; claims provide no yields or resources.` });
+
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });
 
 export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true, cargoCapacity: 3, allowedCargoCategories: ['civilian', 'melee', 'ranged', 'mounted', 'siege', 'covert'] });
@@ -280,7 +283,7 @@ export const ALL_UNIT_TYPES: UnitType[] = [
   NUCLEAR_SUBMARINE, ATOMIC_BOMB, HELICOPTER_GUNSHIP, BAZOOKA,
   MECHANIZED_INFANTRY, MODERN_ARMOR, JET_FIGHTER, STEALTH_BOMBER, GUIDED_MISSILE, NUCLEAR_MISSILE, XCOM_SQUAD,
   GIANT_DEATH_ROBOT, MISSILE_CRUISER,
-  WORKER, SETTLER, TRANSPORT_SHIP,
+  WORKER, SETTLER, SURVEYOR, TRANSPORT_SHIP,
   SPY, AGENT, REBELS, PARTISANS,
 ];
 

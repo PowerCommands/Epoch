@@ -462,6 +462,13 @@
       "isNaval": false
     },
     {
+      "id": "surveyor",
+      "name": "Surveyor",
+      "era": "ancient",
+      "category": "civilian",
+      "isNaval": false
+    },
+    {
       "id": "transport_ship",
       "name": "Transport Ship",
       "era": "renaissance",

@@ -41,6 +41,8 @@ export interface Tile {
   y: number; // grid-koordinat (rad)
   type: TileType;
   originalTerrain?: TileType;
+  /** Political claim only: never economic or city ownership. */
+  territorialClaimNationId?: string;
   ownerId?: string; // referens till Nation.id; undefined = oclaimat
   resourceOwnerNationId?: string; // resource-only claim; does not make the tile city territory
   /** Reciprocal river edge links: E, SE, SW, W, NW, NE (bits 0–5). Geography only. */

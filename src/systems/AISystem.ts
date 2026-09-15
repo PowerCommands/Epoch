@@ -3071,6 +3071,8 @@ export class AISystem {
         continue;
       }
 
+      // Scenario/save/gift Surveyors stay available to human control only.
+      if (unit.unitType.id === 'surveyor') continue;
       if (unit.unitType.id === ARCHAEOLOGIST.id) {
         this.runArchaeologist(unit, nationId);
         continue;
@@ -8756,6 +8758,7 @@ export class AISystem {
   }
 
   private canBuildUnit(nationId: string, unitId: string): boolean {
+    if (unitId === 'surveyor') return false;
     return !this.unitProductionRestrictionReason?.(nationId, unitId) && (this.researchSystem?.isUnitUnlocked(nationId, unitId) ?? true);
   }
 

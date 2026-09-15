@@ -497,6 +497,7 @@ export class SaveLoadService {
           q: tile.x,
           r: tile.y,
           ownerId: tile.ownerId,
+          territorialClaimNationId: tile.ownerId === undefined ? tile.territorialClaimNationId : undefined,
           resourceOwnerNationId: tile.improvementId !== undefined ? tile.resourceOwnerNationId : undefined,
           riverConnections: tile.riverConnections,
           resourceId: tile.resourceId,
@@ -731,6 +732,7 @@ export class SaveLoadService {
         if (tile.originalTerrain !== undefined) tile.type = tile.originalTerrain;
         tile.originalTerrain = undefined;
         tile.ownerId = undefined;
+        tile.territorialClaimNationId = undefined;
         tile.resourceOwnerNationId = undefined;
         tile.resourceId = undefined;
         tile.resourceRevealedByCheat = undefined;
@@ -753,6 +755,7 @@ export class SaveLoadService {
       if (saved.terrainType !== undefined) tile.type = saved.terrainType;
       tile.originalTerrain = saved.originalTerrain;
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
+      tile.territorialClaimNationId = saved.ownerId === undefined ? saved.territorialClaimNationId : undefined;
       if (saved.riverConnections !== undefined) tile.riverConnections = riverMask(saved.riverConnections) || undefined;
       if (saved.resourceId !== undefined) {
         tile.resourceId = saved.resourceId;

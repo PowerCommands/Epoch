@@ -1,3 +1,4 @@
+import { getPoliticalOwnerId } from './TerritorialClaimSystem';
 import type { Unit } from '../entities/Unit';
 import { getAllegianceType } from '../entities/UnitType';
 import { isBarbarianNation } from '../data/barbarians';
@@ -169,7 +170,7 @@ export class ForeignTroopViolationSystem {
       // Barbarians have no diplomacy: their units are never treaty violators.
       if (isBarbarianNation(unit.ownerId)) continue;
       const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
-      const offendedNationId = tile?.ownerId;
+      const offendedNationId = tile ? getPoliticalOwnerId(tile) : undefined;
       if (!offendedNationId || offendedNationId === unit.ownerId) continue;
       if (!this.nationManager.getNation(offendedNationId)) continue;
       if (!this.nationManager.getNation(unit.ownerId)) continue;

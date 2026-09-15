@@ -288,7 +288,7 @@ export class NationManager {
     );
 
     for (const tile of tiles) {
-      if (!tile.ownerId) {
+      if (!tile.ownerId && tile.territorialClaimNationId === undefined) {
         tile.ownerId = nationId;
       }
     }

@@ -1,3 +1,4 @@
+import { absorbTerritorialClaim, canFoundOnTerritorialClaim } from './TerritorialClaimSystem';
 import { getUrbanSlots } from './UrbanDevelopment';
 import { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
@@ -94,7 +95,10 @@ export class FoundCitySystem {
 
   private diplomaticFoundingAllowed: (nation: string, x: number, y: number) => boolean = () => true;
   setDiplomaticFoundingAllowed(predicate: (nation: string, x: number, y: number) => boolean): void { this.diplomaticFoundingAllowed = predicate; }
-  isDiplomaticFoundingAllowed(nation: string, x: number, y: number): boolean { return this.diplomaticFoundingAllowed(nation, x, y); }
+  isDiplomaticFoundingAllowed(nation: string, x: number, y: number): boolean {
+    const tile = this.mapData.tiles[y]?.[x];
+    return !!tile && canFoundOnTerritorialClaim(tile, nation) && this.diplomaticFoundingAllowed(nation, x, y);
+  }
 
   canFound(unit: Unit): boolean {
     if (!this.diplomaticFoundingAllowed(unit.ownerId, unit.tileX, unit.tileY)) return false;
@@ -102,7 +106,7 @@ export class FoundCitySystem {
     if (unit.ownerId !== this.turnManager.getCurrentNation().id) return false;
 
     const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
-    if (!tile) return false;
+    if (!tile || !canFoundOnTerritorialClaim(tile, unit.ownerId)) return false;
     if (!FOUNDABLE_TYPES.has(tile.type)) return false;
 
     if (this.cityManager.getCityAt(unit.tileX, unit.tileY) !== undefined) return false;
@@ -189,6 +193,7 @@ export class FoundCitySystem {
 
     for (const tile of tiles) {
       tile.ownerId = nationId;
+      absorbTerritorialClaim(this.mapData, tile, nationId);
     }
   }
 

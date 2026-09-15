@@ -9,6 +9,7 @@
  * adapts the editor's flat tile arrays to {@link MapData} and back so there is
  * no duplicated algorithm.
  */
+import { getTerritorialClaimTint, isClaimableNeutralLand } from '../systems/TerritorialClaimSystem';
 import { ALL_IMPROVEMENTS } from '../data/improvements';
 import * as Rivers from '../systems/geography/Rivers';
 import type { MapData, TileType } from '../types/map';
@@ -123,6 +124,7 @@ export function generateEditorResources(
 declare global {
   interface Window {
     EpochRivers?: typeof Rivers;
+    EpochTerritorialClaims?: { getTerritorialClaimTint: typeof getTerritorialClaimTint; isClaimableNeutralLand: typeof isClaimableNeutralLand };
     EpochEditorResources?: {
       generateEditorResources: typeof generateEditorResources;
       clearEditorResources: typeof clearEditorResources;
@@ -134,6 +136,7 @@ declare global {
 
 if (typeof window !== 'undefined') {
   window.EpochRivers = Rivers;
+  window.EpochTerritorialClaims = { getTerritorialClaimTint, isClaimableNeutralLand };
   window.EpochEditorResources = {
     generateEditorResources,
     clearEditorResources,

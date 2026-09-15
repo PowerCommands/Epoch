@@ -213,6 +213,7 @@ export interface SavedUnit {
 }
 
 export interface SavedTile {
+  territorialClaimNationId?: string;
   urbanSlot?: { cityId: string; buildingId: string | null };
   terrainType?: import('./map').TileType;
   originalTerrain?: import('./map').TileType;

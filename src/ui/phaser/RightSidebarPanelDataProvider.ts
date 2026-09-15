@@ -979,7 +979,9 @@ export class RightSidebarPanelDataProvider {
   }
 
   private getTileContent(tile: Tile): RightSidebarContent {
-    const owner = tile.ownerId ? this.nationManager.getNation(tile.ownerId) : undefined;
+    const politicalOwnerId = tile.ownerId ?? tile.territorialClaimNationId;
+    const owner = politicalOwnerId ? this.nationManager.getNation(politicalOwnerId) : undefined;
+    const isTerritorialClaim = tile.ownerId === undefined && tile.territorialClaimNationId !== undefined;
     const improvement = tile.improvementId ? getImprovementById(tile.improvementId) : undefined;
     const improvementConstruction = tile.improvementConstruction;
     const constructingImprovement = improvementConstruction
@@ -993,6 +995,7 @@ export class RightSidebarPanelDataProvider {
     const rows: RightSidebarRow[] = [
       textRow(tile.type, false, true),
       textRow(`Owner: ${owner?.name ?? 'Unclaimed'}`, false, false, owner?.color),
+      ...(isTerritorialClaim ? [textRow('Territorial Claim — no city, yields or resource access', true)] : []),
       textRow(`Resource: ${resource?.name ?? 'None'}`),
       textRow(`Improvement: ${improvement?.name ?? 'None'}`),
     ];

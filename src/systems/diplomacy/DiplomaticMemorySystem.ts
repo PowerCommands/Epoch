@@ -1,3 +1,4 @@
+import { TERRITORIAL_CLAIM_RULES } from '../../data/territorialClaims';
 import type {
   DiplomacyManager,
   DiplomacyRelation,
@@ -385,6 +386,10 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
 
   onCityCaptured(attacker: string, defender: string): void {
     this.adjustRelation(attacker, defender, DELTA_CITY_CAPTURED);
+  }
+
+  onTerritorialClaimViolated(claimantId: string, acquiringNationId: string): void {
+    this.adjustRelation(claimantId, acquiringNationId, TERRITORIAL_CLAIM_RULES.incident);
   }
 
   onGoldGift(from: string, to: string, amount: number): void {

@@ -589,6 +589,12 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         <span class="mode-icon" aria-hidden="true">&#127754;</span>
         <span>Paint coastline</span>
       </button>
+      <button class="mode-btn" id="paint-territorial-claims-btn" type="button" aria-pressed="false">Paint Territorial Claims</button>
+      <div id="territorial-claim-controls" hidden>
+        <label class="field">Claim nation<select id="territorial-claim-nation"></select></label>
+        <button class="small-btn" id="erase-territorial-claims-btn" type="button" aria-pressed="false">None — erase claims</button>
+        <div class="hint" id="territorial-claim-hint"></div>
+      </div>
       <div class="palette-grid" id="palette"></div>
     </div>
 
@@ -1260,6 +1266,11 @@ let templateOffsetX = 0, templateOffsetY = 0;
 let templateScale = 1;
 const MIN_TEMPLATE_SCALE = 0.1, MAX_TEMPLATE_SCALE = 12;
 let tiles = null; // 2D array [r][q] of type strings
+// Index references canonical scenario tile objects; claim data is stored on
+// those objects, never in a separate editor-only claim representation.
+let scenarioTileIndex = new Map();
+let claimNationId = null;
+let eraseTerritorialClaims = false;
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
 let tileRivers = null; // reciprocal edge masks [r][q]; terrain remains independent
 let riverAnchor = null;
@@ -1378,6 +1389,9 @@ function startEditor(map, scenarioData, customEntry) {
   currentMap = map;
   currentCustomEntry = customEntry ?? null;
   scenario = scenarioData;
+  rebuildScenarioTileIndex();
+  claimNationId = scenario.nations[0]?.id ?? null;
+  eraseTerritorialClaims = false;
   currentResourceId = null;
   visibleResourceIds.clear();
   selectedEntity = null;
@@ -1458,6 +1472,10 @@ function startEditor(map, scenarioData, customEntry) {
 
   EpochRivers.normalizeRivers(editorRiverGrid());
   normalizeAuthoredCities();
+  for (const tile of scenarioTileIndex.values()) {
+    if (tile.territorialClaimNationId && (!scenario.nations.some(n => n.id === tile.territorialClaimNationId)
+      || !isEditorClaimEligible(tile.q, tile.r))) delete tile.territorialClaimNationId;
+  }
 
   // Center camera
   worldBounds = getWorldBounds();
@@ -2381,7 +2399,7 @@ function safeFilename(value) {
 function buildPalette() {
   const grid = document.getElementById('palette');
   grid.innerHTML = '';
-  document.getElementById('palette-title').textContent = currentPaintMode === 'terrain'
+  document.getElementById('palette-title').textContent = currentPaintMode !== 'resource'
     ? 'Terrain Palette'
     : 'Resource Palette';
 
@@ -2393,10 +2411,11 @@ function buildPalette() {
 
   for (const type of TILE_TYPES) {
     const btn = document.createElement('button');
-    btn.className = 'palette-btn' + (type === currentTerrain ? ' active' : '');
+    btn.className = 'palette-btn' + (currentPaintMode === 'terrain' && type === currentTerrain ? ' active' : '');
     btn.dataset.type = type;
     btn.innerHTML = `<span class="palette-swatch" style="background:${TILE_COLORS[type]}"></span>${type}`;
     btn.addEventListener('click', () => {
+      currentPaintMode = 'terrain';
       currentTerrain = type;
       currentTool = 'paint';
       document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
@@ -2933,6 +2952,7 @@ function updateRegistryNationPreview() {
 document.getElementById('nation-registry-select').addEventListener('change', updateRegistryNationPreview);
 
 function buildNationList() {
+  updateTerritorialClaimControls();
   const nationList = document.getElementById('nation-list');
   nationList.innerHTML = '';
 
@@ -3889,6 +3909,7 @@ document.getElementById('spray-mode-btn').addEventListener('click', toggleSprayM
 document.getElementById('paint-coastline-btn').addEventListener('click', paintCoastline);
 
 function updateInteractionModeUI() {
+  updateTerritorialClaimControls();
   const panModeBtn = document.getElementById('pan-mode-btn');
   const terrainModeBtn = document.getElementById('terrain-paint-mode-btn');
   const resourceModeBtn = document.getElementById('resource-paint-mode-btn');
@@ -4032,6 +4053,8 @@ function resizeWorkspace(newWidth, newHeight, newTileSize) {
   mapH = newHeight;
   tileSize = newTileSize;
   hexSize = tileSize / 2;
+  scenario.map.tiles = scenario.map.tiles.filter(t => t.q >= 0 && t.r >= 0 && t.q < mapW && t.r < mapH);
+  rebuildScenarioTileIndex();
   scenario.map.width = mapW;
   scenario.map.height = mapH;
   scenario.map.tileSize = tileSize;
@@ -4207,19 +4230,23 @@ function recordTileBefore(q, r) {
   if (!currentStrokeChanges) return;
   const key = `${q},${r}`;
   if (currentStrokeChanges.has(key)) return;
-  currentStrokeChanges.set(key, { q, r, prevType: tiles[r][q], prevResource: tileResources[r][q], prevPainted: paintedTiles[r][q], prevRiver: tileRivers[r][q] });
+  currentStrokeChanges.set(key, { q, r, prevType: tiles[r][q], prevResource: tileResources[r][q], prevPainted: paintedTiles[r][q], prevRiver: tileRivers[r][q], prevClaim: getAuthoredClaim(q, r) });
 }
 
 function commitBrushStroke() {
   if (!currentStrokeChanges) return;
   const changes = [];
   for (const before of currentStrokeChanges.values()) {
+    if (getAuthoredClaim(before.q, before.r) && !isEditorClaimEligible(before.q, before.r)) {
+      setAuthoredClaim(before.q, before.r, undefined);
+    }
+    const nextClaim = getAuthoredClaim(before.q, before.r);
     const nextRiver = tileRivers[before.r][before.q];
     const nextType = tiles[before.r][before.q];
     const nextResource = tileResources[before.r][before.q];
     const nextPainted = paintedTiles[before.r][before.q];
-    if (before.prevType === nextType && before.prevResource === nextResource && before.prevPainted === nextPainted && before.prevRiver === nextRiver) continue; // no-op tile
-    changes.push({ q: before.q, r: before.r, prevType: before.prevType, nextType, prevResource: before.prevResource, nextResource, prevPainted: before.prevPainted, nextPainted, prevRiver: before.prevRiver, nextRiver });
+    if (before.prevType === nextType && before.prevResource === nextResource && before.prevPainted === nextPainted && before.prevRiver === nextRiver && before.prevClaim === nextClaim) continue; // no-op tile
+    changes.push({ q: before.q, r: before.r, prevType: before.prevType, nextType, prevResource: before.prevResource, nextResource, prevPainted: before.prevPainted, nextPainted, prevRiver: before.prevRiver, nextRiver, prevClaim: before.prevClaim, nextClaim });
   }
   currentStrokeChanges = null;
   if (changes.length === 0) return; // empty / no-op stroke: nothing to undo
@@ -4237,6 +4264,7 @@ function applyTileChanges(changes, useNext) {
   for (const change of changes) {
     tiles[change.r][change.q] = useNext ? change.nextType : change.prevType;
     tileResources[change.r][change.q] = useNext ? change.nextResource : change.prevResource;
+    if ('prevClaim' in change) setAuthoredClaim(change.q, change.r, useNext ? change.nextClaim : change.prevClaim);
     // Resource-only actions predate rivers and must leave geography untouched.
     if ('prevRiver' in change) tileRivers[change.r][change.q] = useNext ? change.nextRiver : change.prevRiver;
     paintedTiles[change.r][change.q] = useNext ? change.nextPainted : change.prevPainted;
@@ -4474,7 +4502,109 @@ function drawRivers() {
   ctx.restore();
 }
 
+function rebuildScenarioTileIndex() {
+  scenarioTileIndex = new Map(scenario.map.tiles.map(tile => [`${tile.q},${tile.r}`, tile]));
+}
+
+function getAuthoredClaim(q, r) {
+  return scenarioTileIndex.get(`${q},${r}`)?.territorialClaimNationId;
+}
+
+function setAuthoredClaim(q, r, nationId) {
+  if (nationId && !isEditorClaimEligible(q, r)) return;
+  const key = `${q},${r}`;
+  let tile = scenarioTileIndex.get(key);
+  if (!tile) {
+    if (!nationId) return;
+    tile = { q, r, type: tiles[r][q] };
+    scenario.map.tiles.push(tile);
+    scenarioTileIndex.set(key, tile);
+  }
+  if (nationId) tile.territorialClaimNationId = nationId;
+  else delete tile.territorialClaimNationId;
+}
+
+function isEditorClaimEligible(q, r) {
+  if (!tiles[r]?.[q]) return false;
+  if (scenario.cities.some(city => {
+    // Every settlement reserves its seven-hex urban core at scenario startup,
+    // even when its authored ownedTileCoords list is smaller.
+    const dq = city.q - q, dr = city.r - r;
+    if ((Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2 <= 1) return true;
+    return city.ownedTileCoords?.some(c => c.q === q && c.r === r) ?? false;
+  })) return false;
+  return window.EpochTerritorialClaims.isClaimableNeutralLand({
+    x: q, y: r, type: tiles[r][q], buildingId: tileBuildings[r]?.[q],
+    improvementId: tileImprovements[r]?.[q]?.improvementId,
+  });
+}
+
+function updateTerritorialClaimControls() {
+  const active = currentTool === 'paint' && currentPaintMode === 'territorialClaim';
+  const button = document.getElementById('paint-territorial-claims-btn');
+  button.classList.toggle('active', active);
+  button.setAttribute('aria-pressed', String(active));
+  document.getElementById('territorial-claim-controls').hidden = !active;
+  const select = document.getElementById('territorial-claim-nation');
+  const nations = scenario?.nations ?? [];
+  if (!nations.some(n => n.id === claimNationId)) claimNationId = nations[0]?.id ?? null;
+  select.replaceChildren(...nations.map(nation => {
+    const option = document.createElement('option');
+    option.value = nation.id;
+    option.textContent = getNationDisplayName(nation);
+    return option;
+  }));
+  select.value = claimNationId ?? '';
+  select.disabled = nations.length === 0;
+  const eraser = document.getElementById('erase-territorial-claims-btn');
+  eraser.classList.toggle('active', eraseTerritorialClaims);
+  eraser.setAttribute('aria-pressed', String(eraseTerritorialClaims));
+  const nation = nations.find(n => n.id === claimNationId);
+  const hint = document.getElementById('territorial-claim-hint');
+  hint.textContent = eraseTerritorialClaims ? 'Erasing Territorial Claims — drag to remove.'
+    : nation ? `Painting claims for ${getNationDisplayName(nation)} — click or drag.` : 'Add a scenario nation to paint claims.';
+  hint.style.color = nation ? '#' + window.EpochTerritorialClaims.getTerritorialClaimTint(parseInt(nation.color.replace('#', ''), 16)).toString(16).padStart(6, '0') : '';
+}
+
+document.getElementById('paint-territorial-claims-btn').addEventListener('click', () => {
+  currentTool = 'paint';
+  currentPaintMode = 'territorialClaim';
+  sprayMode = false;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
+  buildPalette();
+  updateToolPanels();
+  setInteractionMode('paint');
+  render();
+});
+document.getElementById('territorial-claim-nation').addEventListener('change', event => {
+  commitBrushStroke();
+  claimNationId = event.target.value;
+  eraseTerritorialClaims = false;
+  updateTerritorialClaimControls();
+});
+document.getElementById('erase-territorial-claims-btn').addEventListener('click', () => {
+  eraseTerritorialClaims = !eraseTerritorialClaims;
+  updateTerritorialClaimControls();
+});
+
+function paintTerritorialClaimAt(q, r) {
+  if (!eraseTerritorialClaims && !scenario.nations.some(n => n.id === claimNationId)) return;
+  const radius = brushSize - 1;
+  for (let dq = -radius; dq <= radius; dq++) {
+    for (let dr = Math.max(-radius, -dq - radius); dr <= Math.min(radius, -dq + radius); dr++) {
+      const x = q + dq, y = r + dr;
+      if (!tiles[y]?.[x]) continue;
+      const next = eraseTerritorialClaims ? undefined : claimNationId;
+      if (getAuthoredClaim(x, y) === next || (!eraseTerritorialClaims && !isEditorClaimEligible(x, y))) continue;
+      recordTileBefore(x, y);
+      setAuthoredClaim(x, y, next);
+    }
+  }
+  render();
+}
+
 function paintAt(q, r) {
+  if (currentPaintMode === 'territorialClaim') { paintTerritorialClaimAt(q, r); return; }
   if (currentPaintMode === 'resource') {
     paintResourceAt(q, r);
     return;
@@ -4649,6 +4779,7 @@ function addCityAt(q, r) {
     buildings: [],
   };
 
+  for (const [dq, dr] of [[0, 0], ...MW_HEX_DIRS]) setAuthoredClaim(q + dq, r + dr, undefined);
   scenario.cities.push(city);
   if (city.isCapital) nation.startTerritoryCenter = { q, r };
   selectedEntity = { kind: 'city', index: scenario.cities.length - 1 };
@@ -4838,6 +4969,7 @@ function toggleSelectedCityTile(q, r) {
       if (otherCity === city || !Array.isArray(otherCity.ownedTileCoords)) continue;
       otherCity.ownedTileCoords = otherCity.ownedTileCoords.filter(coord => coord.q !== q || coord.r !== r);
     }
+    setAuthoredClaim(q, r, undefined);
     city.ownedTileCoords.push({ q, r });
     setStatusInfo(`Assigned (${q},${r}) to ${city.name}.`);
   }
@@ -5448,6 +5580,18 @@ function render() {
   }
 
   drawRivers();
+
+  // Claims use the runtime tint and opacity, with fill only (no border pass).
+  for (const tile of scenarioTileIndex.values()) {
+    if (!tile.territorialClaimNationId) continue;
+    const nation = scenario.nations.find(n => n.id === tile.territorialClaimNationId);
+    if (!nation || !isEditorClaimEligible(tile.q, tile.r)) continue;
+    const color = window.EpochTerritorialClaims.getTerritorialClaimTint(parseInt(nation.color.replace('#', ''), 16));
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    drawHex(tile.q, tile.r, '#' + color.toString(16).padStart(6, '0'));
+    ctx.restore();
+  }
 
   // Authored city territory: all cities are subtle; the selected city is
   // stronger and uses both nation colors so reassignments are easy to inspect.
@@ -6093,6 +6237,7 @@ document.getElementById('save-custom-btn').addEventListener('click', () => {
     customEntry: entry,
   };
   scenario = structuredCloneCompat(output);
+  rebuildScenarioTileIndex();
   document.title = `Map Editor — ${entry.metadata.name}`;
   document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
   updateScenarioScope();
@@ -6109,6 +6254,10 @@ function buildScenarioOutput() {
       if (tileRivers[r][q]) tile.riverConnections = tileRivers[r][q];
       if (tileResources[r][q] !== undefined) tile.resourceId = tileResources[r][q];
       if (tileBuildings[r][q] !== undefined) tile.buildingId = tileBuildings[r][q];
+      const claim = getAuthoredClaim(q, r);
+      if (claim && scenario.nations.some(n => n.id === claim) && isEditorClaimEligible(q, r)) {
+        tile.territorialClaimNationId = claim;
+      }
       flatTiles.push(tile);
     }
   }

@@ -325,7 +325,10 @@ export class CityManager {
         city.ownedTileCoords = cfg.ownedTileCoords
           .filter(({ q, r }) => mapData.tiles[r]?.[q] !== undefined)
           .map(({ q, r }) => ({ x: q, y: r }));
-        for (const { x, y } of city.ownedTileCoords) mapData.tiles[y][x].ownerId = cfg.nationId;
+        for (const { x, y } of city.ownedTileCoords) {
+          mapData.tiles[y][x].ownerId = cfg.nationId;
+          delete mapData.tiles[y][x].territorialClaimNationId;
+        }
       }
 
       initializeUrbanDevelopment(city, mapData);

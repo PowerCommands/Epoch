@@ -1,3 +1,4 @@
+import { isClaimableNeutralLand } from './TerritorialClaimSystem';
 import { validateMutualFoeAgreements } from './MutualFoeAgreementValidation';
 import type { MutualFoeAgreement } from '../types/mutualFoe';
 import { normalizeRivers, riverMask } from './geography/Rivers';
@@ -56,6 +57,7 @@ export class ScenarioLoader {
       tiles.push(row);
     }
 
+    const nationIds = new Set(json.nations.map(nation => nation.id));
     // Fill from q/r-authored flat array (case-insensitive lookup)
     for (const entry of json.map.tiles) {
       const tile = tiles[entry.r]?.[entry.q];
@@ -65,6 +67,10 @@ export class ScenarioLoader {
         tile.resourceId = entry.resourceId;
         tile.improvementId = entry.improvementId;
         tile.buildingId = entry.buildingId;
+        if (typeof entry.territorialClaimNationId === 'string'
+          && nationIds.has(entry.territorialClaimNationId) && isClaimableNeutralLand(tile)) {
+          tile.territorialClaimNationId = entry.territorialClaimNationId;
+        }
       }
     }
 

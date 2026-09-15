@@ -132,6 +132,7 @@ import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
 import { BuildingPlacementSystem } from '../systems/BuildingPlacementSystem';
 import { applyBuildingCompletionEffects } from '../systems/BuildingCompletionEffects';
 import { WonderPlacementSystem } from '../systems/WonderPlacementSystem';
+import { TerritorialClaimSystem, onTerritorialClaimAbsorbed } from '../systems/TerritorialClaimSystem';
 import { CityTerritorySystem } from '../systems/CityTerritorySystem';
 import {
   CulturalSphereSystem,
@@ -671,6 +672,12 @@ export class GameScene extends Phaser.Scene {
         ?? DEFAULT_REQUIRED_AEROSPACE_PARTS,
     });
 
+    for (const row of mapData.tiles) for (const tile of row) {
+      if (tile.territorialClaimNationId !== undefined && !activeSet.has(tile.territorialClaimNationId)) {
+        delete tile.territorialClaimNationId;
+      }
+    }
+
     // 3. Create nations and claim AI start territories (mutates mapData.tiles)
     const nationManager = NationManager.loadFromScenario(activeNations, mapData, gridSystem);
 
@@ -721,6 +728,18 @@ export class GameScene extends Phaser.Scene {
       }
       reserveUrbanSlots(city, mapData);
       culturalSphereSystem.claimInitialCityCulture(city, mapData, gridSystem);
+    }
+
+    // Authored claims survive initial nation-area seeding. Only actual city
+    // ownership has precedence over a claim on the same tile.
+    for (const city of cityManager.getAllCities()) {
+      for (const coord of city.ownedTileCoords) {
+        const tile = mapData.tiles[coord.y]?.[coord.x];
+        if (tile?.territorialClaimNationId !== undefined) {
+          tile.ownerId = city.ownerId;
+          delete tile.territorialClaimNationId;
+        }
+      }
     }
 
     // 7. Create units from scenario (filtered)
@@ -1530,6 +1549,26 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('roundStart', (event) => unitLifetimeSystem.handleRoundStart(event.round));
     const diplomaticMemorySystem = new DiplomaticMemorySystem(diplomacyManager);
     diplomacyManager.attachMemoryHook(diplomaticMemorySystem);
+    onTerritorialClaimAbsorbed(mapData, ({ claimantId, acquiringNationId, x, y }) => {
+      diplomaticMemorySystem.onTerritorialClaimViolated(claimantId, acquiringNationId);
+      historicalTimeline.record({
+        type: 'diplomaticAffair', icon: '⚠',
+        text: `Territorial Claim Violated: ${nationManager.getNation(acquiringNationId)?.name ?? acquiringNationId} acquired territory claimed by ${nationManager.getNation(claimantId)?.name ?? claimantId} at (${x}, ${y}). Trust −10, Hostility +10, Suspicion +5.`,
+        eventNationIds: [claimantId, acquiringNationId],
+      });
+      territoryRenderer.invalidate();
+    });
+    const territorialClaimSystem = new TerritorialClaimSystem({
+      mapData, gridSystem,
+      getCities: id => cityManager.getCitiesByOwner(id),
+      getGold: id => nationManager.getResources(id).gold,
+      addGold: (id, amount) => resourceSystem.addGold(id, amount),
+      getUnit: id => unitManager.getUnit(id),
+      removeUnit: id => unitManager.removeUnit(id),
+      getActiveNationId: () => turnManager.getCurrentNation().id,
+      isHumanNation: id => nationManager.getNation(id)?.isHuman === true,
+      onChanged: () => territoryRenderer.invalidate(),
+    });
     // Multilateral Aggression Memory: third-party nations gain diplomatic memory
     // of wars and conquests they witness. Uses the existing contact model
     // (DiscoverySystem) and city-ownership survival condition — no new
@@ -2987,6 +3026,10 @@ export class GameScene extends Phaser.Scene {
       historicalTimeline.record({ type: 'worldCouncilMeeting', icon: '📜', text: message, eventNationIds: city ? [city.ownerId] : [] });
     });
     productionSystem.setItemProductionBlockReasonProvider((cityId, item) => {
+      if (item.kind === 'unit' && item.unitType.id === 'surveyor'
+        && nationManager.getNation(cityManager.getCity(cityId)?.ownerId ?? '')?.isHuman !== true) {
+        return 'Surveyors are available only to human players';
+      }
       if (item.kind !== 'building') return undefined;
       // Power plants keep their own resource gate; ordinary resource-gated
       // buildings (Workshop → Iron, Factory → Coal) go through the shared
@@ -10170,18 +10213,37 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      resourceSystem.addGold(city.ownerId, -cost);
-      const claimed = cityTerritorySystem.claimNextExpansionTileImmediately(city, mapData);
-      if (!claimed) {
-        resourceSystem.addGold(city.ownerId, cost);
-        refreshOpenCityView();
-        return;
-      }
+      const target = { ...city.nextExpansionTileCoord };
+      const claimantId = mapData.tiles[target.y]?.[target.x]?.territorialClaimNationId;
+      const completePurchase = () => {
+        if (turnManager.getCurrentNation().id !== city.ownerId
+          || turnManager.getCurrentRound() !== currentTurn
+          || city.lastTilePurchaseTurn === currentTurn
+          || city.nextExpansionTileCoord?.x !== target.x || city.nextExpansionTileCoord?.y !== target.y
+          || cityTerritorySystem.getGoldTilePurchaseCost(city) !== cost
+          || nationResources.gold < cost
+          || mapData.tiles[target.y]?.[target.x]?.territorialClaimNationId !== claimantId) return;
+        resourceSystem.addGold(city.ownerId, -cost);
+        const claimed = cityTerritorySystem.claimNextExpansionTileImmediately(city, mapData);
+        if (!claimed) {
+          resourceSystem.addGold(city.ownerId, cost);
+          refreshOpenCityView();
+          return;
+        }
 
-      city.lastTilePurchaseTurn = currentTurn;
-      resourceSystem.recalculateForNation(city.ownerId);
-      rightPanel?.requestRefresh();
-      refreshOpenCityView();
+        city.lastTilePurchaseTurn = currentTurn;
+        resourceSystem.recalculateForNation(city.ownerId);
+        rightPanel?.requestRefresh();
+        refreshOpenCityView();
+      };
+      if (claimantId && claimantId !== city.ownerId) {
+        showDiplomacyModal({
+          title: 'Territorial Claim Violated',
+          message: `This territory is claimed by ${nationManager.getNation(claimantId)?.name ?? claimantId}. Acquiring it will cause a diplomatic incident. Buy this tile for ${cost} Gold?`,
+          accentColor: '#e4bc78', confirmLabel: 'Buy Tile', cancelLabel: 'Cancel',
+          onConfirm: completePurchase, onCancel: () => {},
+        });
+      } else completePurchase();
     });
     cityView.onRenameRequested((cityId, name) => {
       const city = cityManager.renameCity(cityId, name);
@@ -10787,7 +10849,18 @@ export class GameScene extends Phaser.Scene {
       });
     };
 
+    unitActionToolbox.setClaimAvailabilityProvider(territorialClaimSystem);
     unitActionToolbox.onModeChanged((mode) => {
+      if (mode === 'claimTerritory') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind === 'unit' && territorialClaimSystem.claimTerritory(selection.unit)) {
+          selectionManager.clearSelection();
+          rightPanel?.requestRefresh();
+        }
+        unitActionToolbox.resetMode();
+        hudLayer?.refresh();
+        return;
+      }
       refreshBoardingDestinations();
       hudLayer?.refresh();
       rangedTargets = new Set();

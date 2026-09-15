@@ -1,3 +1,4 @@
+import { getPoliticalOwnerId } from './TerritorialClaimSystem';
 import { Unit } from '../entities/Unit';
 import { Tile, TileType } from '../types/map';
 import { Selectable } from '../types/selection';
@@ -274,7 +275,8 @@ export class MovementSystem {
   setMissionMovementPermission(provider: typeof this.missionMovementPermission): void { this.missionMovementPermission = provider; }
 
   private getClosedBorderOwner(unit: Unit, tile: Tile): string | null {
-    if (!this.missionMovementPermission(unit, tile)) return tile.ownerId ?? 'mission';
+    const territoryOwnerId = getPoliticalOwnerId(tile);
+    if (!this.missionMovementPermission(unit, tile)) return territoryOwnerId ?? 'mission';
     // Insurgent forces (Rebels, Partisans) infiltrate freely: they ignore closed
     // borders and never trigger the war-required flow when entering foreign land.
     if (unit.unitType.isInsurgentForce === true) return null;
@@ -284,15 +286,15 @@ export class MovementSystem {
     // Work Boats are the one naval type whose peaceful access is governed by
     // Open Borders or the exploitation-right exception below.
     if (unit.unitType.isNaval === true && isWaterTile(tile) && unit.unitType.id !== 'work_boat') return null;
-    if (tile.ownerId === undefined || tile.ownerId === unit.ownerId) return null;
+    if (territoryOwnerId === undefined || territoryOwnerId === unit.ownerId) return null;
     if (this.diplomacyManager === undefined) return null;
 
     // canEnterTerritory already accounts for war state and directional
     // open-borders grants, so the legacy WAR / openBorders branches collapse
     // into a single check.
-    if (canUnitPeacefullyEnterTerritory(unit, tile.ownerId, this.diplomacyManager)) return null;
-    if (this.canPeacekeeperEnterTerritory(unit, tile.ownerId)) return null;
-    return tile.ownerId;
+    if (canUnitPeacefullyEnterTerritory(unit, territoryOwnerId, this.diplomacyManager)) return null;
+    if (this.canPeacekeeperEnterTerritory(unit, territoryOwnerId)) return null;
+    return territoryOwnerId;
   }
 
   private notifyWarRequired(

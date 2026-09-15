@@ -7,6 +7,18 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
+  // src/systems/TerritorialClaimSystem.ts
+  function getPoliticalOwnerId(tile) {
+    return tile.ownerId ?? tile.territorialClaimNationId;
+  }
+  function getTerritorialClaimTint(primaryColor) {
+    const lighten = (channel) => Math.round(channel + (255 - channel) * 0.6);
+    return lighten(primaryColor >> 16 & 255) << 16 | lighten(primaryColor >> 8 & 255) << 8 | lighten(primaryColor & 255);
+  }
+  function isClaimableNeutralLand(tile) {
+    return getPoliticalOwnerId(tile) === void 0 && tile.type !== "ocean" /* Ocean */ && tile.type !== "coast" /* Coast */ && tile.type !== "ice" /* Ice */ && tile.type !== "nuclear_waste" /* NuclearWaste */ && !tile.urbanSlot && !tile.buildingId && !tile.buildingConstruction && !tile.wonderId && !tile.wonderConstruction && !tile.improvementId && !tile.improvementConstruction && !tile.resourceOwnerNationId;
+  }
+
   // src/data/airOperations.ts
   var FIGHTER_INTERCEPTION = [
     { radius: 2, chance: 0.1 },
@@ -254,7 +266,7 @@
     node({ id: "code_of_laws", name: "Code of Laws", era: "ancient", cost: 20, description: "Formal rules turn custom into authority. Shared laws give the first cities a common structure for justice, duty, and rule.", unlocks: [{ type: "government", value: "chiefdom" }, { type: "policySlot", value: "economic" }] }),
     node({ id: "craftsmanship", name: "Craftsmanship", era: "ancient", cost: 48, description: "Skilled hands organize labor, tools, and local defense. Craft traditions help settlements turn raw materials into lasting civic strength.", prerequisites: ["code_of_laws"], unlocks: [{ type: "policySlot", value: "military" }] }),
     node({ id: "foreign_trade", name: "Foreign Trade", era: "ancient", cost: 52, description: "Merchants and envoys begin carrying goods beyond familiar borders. Trade customs make distant neighbors part of city life.", prerequisites: ["code_of_laws"], unlocks: [{ type: "diplomacy", value: "trade_delegations" }, { type: "policySlot", value: "diplomatic" }] }),
-    node({ id: "early_empire", name: "Early Empire", era: "ancient", cost: 50, description: "Small settlements learn to think as a realm. Borders, tribute, and local chiefs become the first shape of expansion.", prerequisites: ["craftsmanship"], unlocks: [{ type: "government", value: "tribal_council" }] }),
+    node({ id: "early_empire", name: "Early Empire", era: "ancient", cost: 50, description: "Small settlements learn to think as a realm. Borders, tribute, and local chiefs become the first shape of expansion.", prerequisites: ["craftsmanship"], unlocks: [{ type: "government", value: "tribal_council" }, { type: "unit", value: "surveyor" }] }),
     node({ id: "state_workforce", name: "State Workforce", era: "ancient", cost: 55, description: "Public labor becomes an instrument of government. Organized work crews raise monuments, roads, and shared civic projects, and open the Public Works policy.", prerequisites: ["craftsmanship"], unlocks: [] }),
     node({ id: "mysticism", name: "Mysticism", era: "ancient", cost: 60, description: "Ritual, omen, and sacred authority bind people through wonder. Flexible traditions make room for leaders who act beyond ordinary law.", prerequisites: ["foreign_trade"], unlocks: [{ type: "policySlot", value: "wildcard" }] }),
     node({ id: "military_tradition", name: "Military Tradition", era: "classical", cost: 90, description: "War stories become doctrine, ceremony, and inherited command. Armies fight with shared memory as much as weapons.", prerequisites: ["early_empire"], unlocks: [{ type: "unit", value: "horseman" }] }),
@@ -934,6 +946,7 @@
   }
   if (typeof window !== "undefined") {
     window.EpochRivers = Rivers_exports;
+    window.EpochTerritorialClaims = { getTerritorialClaimTint, isClaimableNeutralLand };
     window.EpochEditorResources = {
       generateEditorResources,
       clearEditorResources,
