@@ -31,7 +31,9 @@ function makeHarness() {
   const nations = new NationManager();
   nations.addNation(new Nation({ id: NATION_ID, name: 'France', color: 0x0000ff, isHuman: true }));
   const cities = new CityManager();
-  cities.addCity(new City({ id: CITY_ID, name: 'Paris', ownerId: NATION_ID, tileX: 0, tileY: 0 }));
+  cities.addCity(new City({ id: CITY_ID, name: 'Paris', ownerId: NATION_ID, tileX: 0, tileY: 0,
+    urbanDevelopment: { requirements: Array(6).fill(null), waterMask: 0 },
+  }));
   const turns = new TurnManager(nations, getGameSpeedById('marathon'));
   const happiness = new HappinessSystem(nations, cities);
   const production = new ProductionSystem(cities, turns, happiness, getGameSpeedById('marathon'), undefined, nations);

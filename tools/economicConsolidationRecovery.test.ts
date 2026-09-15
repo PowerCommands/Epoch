@@ -19,6 +19,7 @@ import { ProductionSystem } from '../src/systems/ProductionSystem.ts';
 import { ResourceSystem } from '../src/systems/ResourceSystem.ts';
 import { TileResourceGenerator } from '../src/systems/ResourceGenerator.ts';
 import { TurnManager } from '../src/systems/TurnManager.ts';
+import { reserveUrbanSlots } from '../src/systems/UrbanDevelopment.ts';
 import { HexGridSystem } from '../src/systems/grid/HexGridSystem.ts';
 import { TileType, type MapData, type Tile } from '../src/types/map.ts';
 
@@ -37,6 +38,7 @@ function makeHarness() {
   city.ownedTileCoords = tiles.flat().map(({ x, y }) => ({ x, y }));
   cities.addCity(city);
   const mapData: MapData = { width: 3, height: 3, tileSize: 1, tiles };
+  reserveUrbanSlots(city, mapData);
   const turns = new TurnManager(nations, getGameSpeedById('marathon'));
   const happiness = new HappinessSystem(nations, cities);
   const resources = new ResourceSystem(
@@ -61,7 +63,7 @@ function makeHarness() {
     if (item.kind !== 'building') return true;
     if (
       item.buildingType.placement !== 'city'
-      && !buildingPlacement.finalizeReservedBuilding(cityId, item.buildingType.id, mapData)
+      && !buildingPlacement.completePhysicalBuilding(city, item.buildingType, mapData)
     ) return false;
     cities.getBuildings(cityId).add(item.buildingType);
     resources.recalculateForNation(NATION_ID);

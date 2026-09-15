@@ -32,6 +32,9 @@ export class AirOperationsSystem {
     private readonly currentOwner: () => string,
     private readonly strike: (unit: Unit, x: number, y: number) => boolean,
     private readonly missionAllowed: (unit: Unit, x: number, y: number) => boolean = () => true,
+    // True when a remote tile holds enemy infrastructure (improvement / building /
+    // wonder / camp) this owner may bomb — ownership and diplomacy already gated.
+    private readonly infrastructureTarget: (attackerOwnerId: string, x: number, y: number) => boolean = () => false,
   ) {
     units.airOperations = this;
     units.onUnitChanged(event => {
@@ -142,7 +145,10 @@ export class AirOperationsSystem {
     const base = this.baseFor(unit);
     if (!base || !this.map.tiles[target.y]?.[target.x] || this.grid.getDistance(base, target) > (unit.unitType.range ?? 0)) return false;
     const defender = this.units.getUnitAt(target.x,target.y) ?? this.cities.getCityAt(target.x,target.y);
-    return !!defender && defender.ownerId !== unit.ownerId && (this.diplomacy?.canAttack(unit.ownerId,defender.ownerId) ?? true);
+    if (defender) return defender.ownerId !== unit.ownerId && (this.diplomacy?.canAttack(unit.ownerId,defender.ownerId) ?? true);
+    // No unit or city on the tile: an air strike may still bomb enemy
+    // infrastructure (improvements / buildings) sitting there.
+    return this.infrastructureTarget(unit.ownerId, target.x, target.y);
   }
   rebaseDestinations(unit: Unit): AirBaseSite[] {
     if (!this.ready(unit)) return [];
@@ -210,11 +216,26 @@ export class AirOperationsSystem {
   /** Pragmatic front selection: attack valuable visible targets, otherwise transfer closer. */
   runAI(ownerId: string, known: (x: number,y: number) => boolean = () => true): void {
     this.reconcile();
-    const targets = [
+    const aircraft = this.units.getUnitsByOwner(ownerId).filter(u => u.unitType.aircraftRole);
+    if (!aircraft.length) return; // no planes → skip target enumeration (incl. the map scan)
+    const combatants = [
       ...this.units.getAllUnits().filter(u => !u.unitType.aircraftRole && !u.carriedByUnitId && u.ownerId !== ownerId).map(u => ({ ...position(u), ownerId: u.ownerId, score: 50 + (u.unitType.airDefense ? 40 : 0) + (u.unitType.baseHealth-u.health) })),
       ...this.cities.getAllCities().filter(c => c.ownerId !== ownerId).map(c => ({ ...position(c), ownerId: c.ownerId, score: 80 })),
-    ].filter(t => known(t.x,t.y) && (this.diplomacy?.canAttack(ownerId,t.ownerId) ?? true)).sort((a,b) => b.score-a.score || a.x-b.x || a.y-b.y);
-    for (const unit of this.units.getUnitsByOwner(ownerId).filter(u => u.unitType.aircraftRole)) {
+    ].filter(t => known(t.x,t.y) && (this.diplomacy?.canAttack(ownerId,t.ownerId) ?? true));
+    // Infrastructure is a low-priority fallback (below units/cities): planes bomb
+    // enemy improvements/buildings only when no combatant target is reachable.
+    const infrastructure: { x: number; y: number; score: number }[] = [];
+    for (let y = 0; y < this.map.tiles.length; y++) {
+      const row = this.map.tiles[y];
+      for (let x = 0; x < (row?.length ?? 0); x++) {
+        const tile = row[x];
+        if (!tile || (tile.improvementId === undefined && tile.buildingId === undefined)) continue;
+        if (!known(x,y) || !this.infrastructureTarget(ownerId,x,y)) continue;
+        infrastructure.push({ x, y, score: tile.buildingId !== undefined ? 40 : 20 });
+      }
+    }
+    const targets = [...combatants, ...infrastructure].sort((a,b) => b.score-a.score || a.x-b.x || a.y-b.y);
+    for (const unit of aircraft) {
       if (!this.ready(unit)) continue;
       const target = targets.find(t => this.canTarget(unit,t));
       if (target && this.mission(unit,target.x,target.y)) continue;

@@ -58,6 +58,7 @@ import { isEmbarked } from './UnitMovementRules';
 import type { CityDefenseSystem } from './CityDefenseSystem';
 import type { NationCollapseSystem } from './NationCollapseSystem';
 import type { CityIntegrationSystem } from './CityIntegrationSystem';
+import type { InfrastructureSabotageSystem } from './InfrastructureSabotageSystem';
 
 export interface CombatEvent {
   attacker: Unit;
@@ -163,6 +164,9 @@ export class CombatSystem {
   // Optional: turns covert combat (privateer/insurgent raids, caught insurgents)
   // into Suspicion. Injected after construction to avoid a constructor cycle.
   private covertSuspicionSystem: CovertSuspicionSystem | null = null;
+  // Optional: lets air strikes bomb enemy tile infrastructure (improvements /
+  // buildings). Injected after construction to avoid a constructor cycle.
+  private infrastructureSabotage: InfrastructureSabotageSystem | null = null;
   // Diagnostic-only: lightweight per-city siege tracking so a capture can report
   // how long the city was under sustained pressure. Never read by gameplay.
   private readonly siegeTracker = new Map<string, { firstRound: number; lastRound: number; attacks: number }>();
@@ -191,7 +195,7 @@ export class CombatSystem {
     // instrumentation: it never influences combat resolution or gameplay.
     private readonly conquestDiagnosticLog?: (nationId: string, message: string) => void,
   ) {
-    this.airOperations = new AirOperationsSystem(unitManager, cityManager, mapData, gridSystem, diplomacyManager, () => turnManager.getCurrentRound(), () => turnManager.getCurrentNation().id, (unit,x,y) => this.resolveAirStrike(unit,x,y), (unit,x,y) => !this.isUnitCombatBlocked(unit) && this.missionAttackPermission(unit,x,y));
+    this.airOperations = new AirOperationsSystem(unitManager, cityManager, mapData, gridSystem, diplomacyManager, () => turnManager.getCurrentRound(), () => turnManager.getCurrentNation().id, (unit,x,y) => this.resolveAirStrike(unit,x,y), (unit,x,y) => !this.isUnitCombatBlocked(unit) && this.missionAttackPermission(unit,x,y), (ownerId,x,y) => this.canAirStrikeInfrastructure(ownerId,x,y));
     productionSystem.setAircraftProductionReason?.((cityId,item) => {
       const city = cityManager.getCity(cityId);
       return city && item.kind === 'unit' && item.unitType.aircraftRole ? this.airOperations.productionBlockReason(city, item.aircraftBase) : undefined;
@@ -211,6 +215,10 @@ export class CombatSystem {
 
   setCovertSuspicionSystem(system: CovertSuspicionSystem): void {
     this.covertSuspicionSystem = system;
+  }
+
+  setInfrastructureSabotageSystem(system: InfrastructureSabotageSystem): void {
+    this.infrastructureSabotage = system;
   }
 
   setCapitalCaptureResolver(resolver: CapitalCaptureResolver): void {
@@ -408,7 +416,22 @@ export class CombatSystem {
     const defender = this.unitManager.getUnitAt(x,y);
     if (defender) return defender.ownerId !== attacker.ownerId && this.executeUnitCombat(attacker,defender,true);
     const city = this.cityManager.getCityAt(x,y);
-    return !!city && city.ownerId !== attacker.ownerId && this.executeCityCombat(attacker,city,true);
+    if (city) return city.ownerId !== attacker.ownerId && this.executeCityCombat(attacker,city,true);
+    // No unit or city on the tile: bomb enemy infrastructure sitting there —
+    // improvements are destroyed outright, buildings/wonders are left broken.
+    return this.infrastructureSabotage?.applyAirStrike(attacker, x, y) ?? false;
+  }
+
+  /**
+   * Air-strike targetability for enemy tile infrastructure (used by
+   * AirOperationsSystem.canTarget): a strikeable improvement / building exists at
+   * the tile and, when it is owned, the attacker is at war with the owner. Neutral
+   * targets (unowned improvements, Barbarian Camps) need no war.
+   */
+  private canAirStrikeInfrastructure(attackerOwnerId: string, x: number, y: number): boolean {
+    const target = this.infrastructureSabotage?.getAirStrikeTarget(attackerOwnerId, x, y);
+    if (!target) return false;
+    return !target.victimNationId || (this.diplomacyManager?.canAttack(attackerOwnerId, target.victimNationId) ?? true);
   }
 
   private executeUnitCombat(attacker: Unit, target: Unit, isRanged = false): boolean {

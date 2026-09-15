@@ -449,21 +449,24 @@ export class AIOverseasExpansionSystem {
     if (!target || target.status === 'expeditionReady') return undefined;
     this.updateExpeditionIntent(nationId, target);
 
-    if (this.needsSettlerForSelectedTarget(nationId) && canProduceSettler) {
-      return { unitType: SETTLER, target: { ...normalizeTarget(target) }, component: 'settler' };
-    }
-
+    // Use a capable coastal city for the transport first. Other cities can then
+    // build the Settler in parallel instead of consuming the only shipyard slot.
     if (
       this.needsTransportForSelectedTarget(nationId)
       && cityHasWaterTile(city, this.mapData)
     ) {
       const transportType = this.chooseBestSettlerTransportUnitType(availableTransportUnitTypes);
-      if (!transportType) return undefined;
-      if (target.requestedTransportUnitTypeId !== transportType.id) {
-        target.requestedTransportUnitTypeId = transportType.id;
-        this.log(nationId, `wants ${transportType.name} for overseas expedition target ${target.name}.`);
+      if (transportType) {
+        if (target.requestedTransportUnitTypeId !== transportType.id) {
+          target.requestedTransportUnitTypeId = transportType.id;
+          this.log(nationId, `wants ${transportType.name} for overseas expedition target ${target.name}.`);
+        }
+        return { unitType: transportType, target: { ...normalizeTarget(target) }, component: 'transport' };
       }
-      return { unitType: transportType, target: { ...normalizeTarget(target) }, component: 'transport' };
+    }
+
+    if (this.needsSettlerForSelectedTarget(nationId) && canProduceSettler) {
+      return { unitType: SETTLER, target: { ...normalizeTarget(target) }, component: 'settler' };
     }
 
     return undefined;

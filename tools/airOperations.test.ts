@@ -1,7 +1,9 @@
 import { planAirProduction } from '../src/systems/ai/AIAirProduction';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AIRFIELD, AIR_BASE } from '../src/data/buildings';
+import { AIRFIELD, AIR_BASE, GRANARY } from '../src/data/buildings';
+import { WonderSystem } from '../src/systems/WonderSystem';
+import { InfrastructureSabotageSystem } from '../src/systems/InfrastructureSabotageSystem';
 import { FIGHTER_INTERCEPTION, GROUND_INTERCEPTION, airMissionRoll } from '../src/data/airOperations';
 import { TRIPLANE, FIGHTER, GREAT_WAR_BOMBER, BOMBER, STEALTH_BOMBER, ANTI_AIRCRAFT_GUN, MOBILE_SAM, CARRIER, WARRIOR, HELICOPTER_GUNSHIP, ATOMIC_BOMB, GUIDED_MISSILE, NUCLEAR_MISSILE, canCarryUnitType } from '../src/data/units';
 import type { UnitType } from '../src/entities/UnitType';
@@ -347,6 +349,47 @@ test('map display state: aircraftAt/usage/allSites back the ✈ current/max indi
   const site = h.air.baseFor(first)!;
   assert.match(site.name, /Airfield/);
   assert.equal(`${h.air.usage(site.base)} / ${site.capacity}`, '1 / 2');
+});
+
+test('air strikes damage units, destroy improvements outright, and break buildings', () => {
+  const h = harness();
+  const base = h.city(2, 10, 'a');
+  h.cities.getBuildings(base.id).add(AIR_BASE);       // capacity 4: fits several bombers
+  const enemyCity = h.city(7, 10, 'b');               // owns (7,10) and (8,10)
+  const wonders = new WonderSystem();
+  const sabotage = new InfrastructureSabotageSystem(h.map, h.cities, wonders, h.nations, () => {});
+  h.combat.setInfrastructureSabotageSystem(sabotage);
+
+  // Improvement on an enemy-owned tile with no unit/city → destroyed outright.
+  const farmTile = h.map.tiles[10][5];
+  farmTile.ownerId = 'b'; farmTile.improvementId = 'farm';
+  const bomber1 = h.spawn(STEALTH_BOMBER); h.air.reconcile();
+  assert.ok(h.air.canTarget(bomber1, { x: 5, y: 10 }), 'improvement tile is targetable');
+  assert.ok(h.air.mission(bomber1, 5, 10));
+  assert.equal(farmTile.improvementId, undefined, 'improvement destroyed');
+
+  // Building on an enemy city tile → left standing but marked broken.
+  const buildingTile = h.map.tiles[10][8];            // owned by enemyCity
+  buildingTile.buildingId = GRANARY.id;
+  h.cities.getBuildings(enemyCity.id).add(GRANARY);
+  const bomber2 = h.spawn(STEALTH_BOMBER); h.air.reconcile();
+  assert.ok(h.air.canTarget(bomber2, { x: 8, y: 10 }), 'building tile is targetable');
+  assert.ok(h.air.mission(bomber2, 8, 10));
+  assert.equal(buildingTile.buildingId, GRANARY.id, 'building is not removed');
+  assert.equal(h.cities.getBuildings(enemyCity.id).isBroken(GRANARY.id), true, 'building broken');
+
+  // Enemy unit → takes ranged damage per the aircraft's strength.
+  const victim = h.spawn(WARRIOR, 4, 10, 'b');
+  const before = victim.health;
+  const bomber3 = h.spawn(STEALTH_BOMBER); h.air.reconcile();
+  assert.ok(h.air.mission(bomber3, 4, 10));
+  assert.ok(victim.health < before, 'unit damaged by air strike');
+
+  // Own infrastructure is never a valid air target.
+  const ownFarm = h.map.tiles[10][3];
+  ownFarm.ownerId = 'a'; ownFarm.improvementId = 'farm';
+  const bomber4 = h.spawn(STEALTH_BOMBER); h.air.reconcile();
+  assert.equal(h.air.canTarget(bomber4, { x: 3, y: 10 }), false, 'cannot bomb own improvement');
 });
 
 test('legacy city-only air buildings and their queues gain physical destinations on load', () => {

@@ -5884,9 +5884,12 @@ export class AISystem {
 
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
+    this.reconsiderContinuousProjects(cities, this.turnManager.getCurrentRound());
     this.ensureEmergencyMilitaryProduction(nationId);
     this.runEmergencyMilitaryPurchase(nationId);
     this.runEconomicConsolidationRecoveryPurchases(nationId);
+    this.ensureExpeditionProduction(nationId, cities);
+    this.ensureUrgentCapacityProduction(nationId, cities);
     this.logSpaceRaceFactoryPriorityState(nationId);
     this.updateAndLogAIPhase(nationId);
     this.ensureScoutProduction(nationId, cities);
@@ -6026,6 +6029,64 @@ export class AISystem {
       } else if (choice.kind === 'building' && choice.buildingType.id === MUSEUM.id) {
         // Only one nation-wide Museum boost; extra Museums aren't archaeology-driven.
         archaeologyPlan.museumPriority = false;
+      }
+    }
+  }
+
+  /** Projects never complete. Reconsider them regularly without rescoring every city every turn. */
+  private reconsiderContinuousProjects(cities: readonly City[], round = 0): void {
+    for (const city of cities) {
+      if (round % 5 !== 0 && !this.productionSystem.getQueue(city.id).some(entry => entry.item.kind !== 'project')) continue;
+      while (this.productionSystem.getProduction(city.id)?.item.kind === 'project') {
+        // Removing only the project preserves any queued construction and its progress.
+        this.productionSystem.removeFromQueue(city.id, 0);
+      }
+    }
+  }
+
+  /** Commit the components of an already selected expedition before routine scoring. */
+  private ensureExpeditionProduction(nationId: string, cities: readonly City[]): void {
+    if (!this.overseasExpansionSystem?.getSelectedOverseasTarget(nationId)) return;
+    for (const city of cities) {
+      if (this.productionSystem.getProduction(city.id)) continue;
+      const canProduce = (unitType: UnitType): boolean => (
+        this.canBuildUnit(nationId, unitType.id)
+        && canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+        && this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'unit', unitType }) === undefined
+      );
+      const transports = ALL_UNIT_TYPES.filter((unitType) => (
+        unitType.isNaval === true && hasCargoCapacity(unitType)
+        && canCarryUnitType(unitType, SETTLER) && canProduce(unitType)
+      ));
+      const request = this.overseasExpansionSystem.getExpeditionProductionRequest(
+        nationId, city, canProduce(SETTLER) && !this.isSettlerProductionBlockedByHappiness(nationId), transports,
+      );
+      if (!request) continue;
+      this.productionSystem.enqueue(city.id, { kind: 'unit', unitType: request.unitType });
+      const queued = this.productionSystem.getProduction(city.id)?.item;
+      if (queued?.kind === 'unit' && queued.unitType.id === request.unitType.id) {
+        this.overseasExpansionSystem.markProductionSelected(nationId, city.name, request.component, request.target.markerId);
+      }
+    }
+  }
+
+  /** A capped city or expiring plant must not lose to strategy weights indefinitely. */
+  private ensureUrgentCapacityProduction(nationId: string, cities: readonly City[]): void {
+    for (const [cityId, decision] of this.createPowerPlantPlans(nationId, cities)) {
+      if (decision.score < 100 && decision.reason !== 'aging_replacement'
+        && decision.reason !== 'inactive_replacement' && decision.reason !== 'emergency_downgrade') continue;
+      const city = this.cityManager.getCity(cityId);
+      const building = getBuildingById(decision.buildingId);
+      if (!city || !building || this.productionSystem.getProduction(cityId)) continue;
+      const placement = this.reserveAIBuildingPlacement(city, building);
+      if (building.placement !== 'city' && this.buildingPlacementSystem && !placement
+        && !this.buildingPlacementSystem.isAutomaticUpgrade(city, building, this.mapData)) continue;
+      this.productionSystem.enqueue(cityId, { kind: 'building', buildingType: building }, { placement });
+      const queued = this.productionSystem.getProduction(cityId)?.item;
+      if (queued?.kind === 'building' && queued.buildingType.id === building.id) {
+        this.logPowerPlantDecision(nationId, city, decision);
+      } else {
+        this.buildingPlacementSystem?.releaseCityBuildingReservation(cityId, building.id, this.mapData);
       }
     }
   }

@@ -12,6 +12,16 @@ import { getImprovementOwnerId } from './ImprovementOwnership';
 
 export type DestroyActionKind = 'improvement' | 'building';
 
+/**
+ * A remote air-strike infrastructure target: which kind of structure would be
+ * hit and the nation that owns it (undefined for a neutral, ownerless target
+ * such as an unowned improvement or a Barbarian Camp).
+ */
+export interface AirStrikeInfrastructureTarget {
+  kind: DestroyActionKind;
+  victimNationId?: string;
+}
+
 /** Loot granted to the destroying nation when an improvement is razed. */
 export const IMPROVEMENT_DESTRUCTION_LOOT_GOLD = 10;
 
@@ -281,6 +291,98 @@ export class InfrastructureSabotageSystem {
   getDestroyImprovementLootGold(unit: Unit): number {
     return unit.unitType.canBuildImprovements !== true && this.canDestroyImprovement(unit)
       ? IMPROVEMENT_DESTRUCTION_LOOT_GOLD : 0;
+  }
+
+  /**
+   * Air-strike targeting for a REMOTE tile. Aircraft bomb from a distance, so —
+   * unlike the ground demolisher methods above — this reads the target tile
+   * directly instead of the unit's own tile. Returns the strikeable structure
+   * and the nation it belongs to (undefined for a neutral target, e.g. an
+   * unowned improvement or a Barbarian Camp), or null when the tile holds
+   * nothing this attacker's air strike can hit.
+   *
+   * A breakable building / wonder / camp takes precedence over a tile
+   * improvement (the higher-value structure is bombed first). The attacker's own
+   * infrastructure and protected buildings are never valid targets; diplomacy is
+   * left to the caller (an owned target requires being at war).
+   */
+  getAirStrikeTarget(attackerOwnerId: string, x: number, y: number): AirStrikeInfrastructureTarget | null {
+    const tile = this.mapData.tiles[y]?.[x];
+    if (!tile) return null;
+
+    const breakable = this.getBreakableTarget(tile);
+    if (breakable) {
+      if (breakable.kind === 'camp') return { kind: 'building' }; // neutral, ownerless
+      if (breakable.kind === 'wonder') {
+        const victimNationId = this.wonderSystem.getCompletedWonder(breakable.id)?.ownerId;
+        return victimNationId === attackerOwnerId ? null : { kind: 'building', victimNationId };
+      }
+      const owningCity = this.findCityOwningTile(tile);
+      if (owningCity && this.cityManager.getBuildings(owningCity.id).isProtected(breakable.id)) return null;
+      const victimNationId = owningCity?.ownerId ?? tile.ownerId;
+      return victimNationId === attackerOwnerId ? null : { kind: 'building', victimNationId };
+    }
+
+    if (tile.improvementId !== undefined) {
+      const victimNationId = getImprovementOwnerId(tile);
+      return victimNationId === attackerOwnerId ? null : { kind: 'improvement', victimNationId };
+    }
+    return null;
+  }
+
+  /**
+   * Apply an air strike's infrastructure effect at a remote tile: destroy an
+   * improvement outright, or damage (break) a building / wonder / camp — the same
+   * outcomes as the ground demolisher, minus loot and unit-turn consumption (the
+   * air mission already spent the aircraft's movement, and bombing grants no
+   * plunder). Returns true when something was hit.
+   */
+  applyAirStrike(attacker: Unit, x: number, y: number): boolean {
+    const tile = this.mapData.tiles[y]?.[x];
+    const target = tile ? this.getAirStrikeTarget(attacker.ownerId, x, y) : null;
+    if (!tile || !target) return false;
+
+    if (target.kind === 'improvement') {
+      const improvementId = tile.improvementId!;
+      tile.improvementId = undefined;
+      tile.improvementOwnerId = undefined;
+      // Legacy sea claims are tied to their improvement and must not survive it.
+      tile.resourceOwnerNationId = undefined;
+      this.log({
+        nationId: attacker.ownerId,
+        message: `${attacker.unitType.name} bombed and destroyed enemy improvement (${improvementId}) at (${x}, ${y}).`,
+      });
+      if (target.victimNationId) this.onInfrastructureChanged([target.victimNationId]);
+      return true;
+    }
+
+    const breakable = this.getBreakableTarget(tile)!;
+    const owningCity = this.findCityOwningTile(tile);
+    const location = owningCity ? ` in ${owningCity.name}` : '';
+    if (breakable.kind === 'wonder') {
+      this.wonderSystem.setWonderBroken(breakable.id, true);
+    } else if (breakable.kind === 'camp') {
+      // Neutral tile structure: bombing razes it outright (no lingering ruin).
+      tile.buildingId = undefined;
+      tile.buildingBroken = undefined;
+    } else if (owningCity) {
+      if (getBuildingById(breakable.id)?.repeatable) tile.buildingBroken = true;
+      else this.cityManager.getBuildings(owningCity.id).setBroken(breakable.id, true);
+    }
+
+    const name = breakable.kind === 'wonder'
+      ? getWonderById(breakable.id)?.name ?? breakable.id
+      : getBuildingById(breakable.id)?.name ?? breakable.id;
+    const outcome = breakable.kind === 'camp' ? 'razed and removed' : 'now broken';
+    this.log({
+      nationId: attacker.ownerId,
+      message: `${attacker.unitType.name} bombed ${name}${location} at (${x}, ${y}). The ${breakable.kind} is ${outcome}.`,
+    });
+    const affectedNationId = breakable.kind === 'wonder'
+      ? this.wonderSystem.getCompletedWonder(breakable.id)?.ownerId
+      : owningCity?.ownerId;
+    if (affectedNationId) this.onInfrastructureChanged([affectedNationId]);
+    return true;
   }
 
   /** Free domestic demolition, restricted to the builder's land/water domain. */

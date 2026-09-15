@@ -7,16 +7,20 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { CARGO_SHIP, SETTLER } from '../src/data/units.ts';
+import { DOCK } from '../src/data/buildings.ts';
+import { ECONOMIC_DEVELOPMENT } from '../src/data/projects.ts';
 import { City } from '../src/entities/City.ts';
 import { Nation } from '../src/entities/Nation.ts';
 import { Unit } from '../src/entities/Unit.ts';
 import { AIOverseasExpansionSystem } from '../src/systems/AIOverseasExpansionSystem.ts';
-import type { CityManager } from '../src/systems/CityManager.ts';
+import { AISystem } from '../src/systems/AISystem.ts';
+import { CityManager } from '../src/systems/CityManager.ts';
+import { HappinessSystem } from '../src/systems/HappinessSystem.ts';
 import type { MovementSystem } from '../src/systems/MovementSystem.ts';
 import { NationManager } from '../src/systems/NationManager.ts';
 import { PathfindingSystem } from '../src/systems/PathfindingSystem.ts';
-import type { ProductionSystem } from '../src/systems/ProductionSystem.ts';
-import type { TurnManager } from '../src/systems/TurnManager.ts';
+import { ProductionSystem } from '../src/systems/ProductionSystem.ts';
+import { TurnManager } from '../src/systems/TurnManager.ts';
 import { UnitBoardingManager } from '../src/systems/UnitBoardingManager.ts';
 import { UnitManager } from '../src/systems/UnitManager.ts';
 import type { WorldMarkerSystem } from '../src/systems/WorldMarkerSystem.ts';
@@ -66,6 +70,7 @@ interface HarnessOpts {
   map: MapData;
   units: Array<{ id: string; type: typeof CARGO_SHIP | typeof SETTLER; x: number; y: number }>;
   movement: (units: UnitManager) => MovementSystem;
+  cities?: City[];
 }
 
 function harness(opts: HarnessOpts) {
@@ -83,11 +88,10 @@ function harness(opts: HarnessOpts) {
     units.addUnit(new Unit({ id: u.id, name: u.id, ownerId: NATION, unitType: u.type, tileX: u.x, tileY: u.y }));
   }
 
-  // Minimal CityManager/ProductionSystem: no cities means no queued units, which
-  // keeps hasQueued* false so transport decisions depend purely on owned ships.
-  const cityManager = { getCitiesByOwner: () => [] } as unknown as CityManager;
-  const productionSystem = { getQueue: () => [] } as unknown as ProductionSystem;
-  const turnManager = { getCurrentRound: () => 1 } as unknown as TurnManager;
+  const cityManager = new CityManager();
+  for (const city of opts.cities ?? []) cityManager.addCity(city);
+  const turnManager = new TurnManager(nations);
+  const productionSystem = new ProductionSystem(cityManager, turnManager, new HappinessSystem(nations, cityManager));
 
   const logs: string[] = [];
   const system = new AIOverseasExpansionSystem(
@@ -97,7 +101,7 @@ function harness(opts: HarnessOpts) {
     (_n, m) => { logs.push(m); },
   );
 
-  return { system, logs, units, nations, pathfinding, grid };
+  return { system, logs, units, nations, pathfinding, grid, cityManager, productionSystem };
 }
 
 function setTargets(nations: NationManager, targets: OverseasSettlementTarget[]): void {
@@ -113,6 +117,43 @@ function coastalCity(map: MapData): City {
 
 const CARGO_COUNT = (units: UnitManager) =>
   units.getUnitsByOwner(NATION).filter((u) => u.unitType.id === CARGO_SHIP.id).length;
+
+test('expedition production leaves continuous projects and reserves coastal transport plus inland settler without duplicates', () => {
+  const map = oceanMap();
+  land(map, 4, 4, NATION);
+  land(map, 2, 4, NATION);
+  const coast = new City({ id: 'port', name: 'Port', ownerId: NATION, tileX: 4, tileY: 4 });
+  coast.ownedTileCoords = [{ x: 4, y: 4 }, { x: 5, y: 4 }];
+  Object.assign(map.tiles[4][5], { type: TileType.Coast, ownerId: NATION, buildingId: DOCK.id });
+  const inland = new City({ id: 'inland', name: 'Inland', ownerId: NATION, tileX: 2, tileY: 4 });
+  inland.ownedTileCoords = [{ x: 2, y: 4 }];
+  const cities = [coast, inland];
+  const h = harness({ map, units: [], movement: frozenMovement, cities });
+  h.cityManager.getBuildings(coast.id).add(DOCK);
+  setTargets(h.nations, [{
+    markerId: 'expedition', name: 'Iron Island', targetX: 13, targetY: 4,
+    source: 'marker', priority: 1, discoveredTurn: 1, selected: true, status: 'expeditionPreparing',
+  }]);
+  for (const city of cities) h.productionSystem.enqueue(city.id, { kind: 'project', projectType: ECONOMIC_DEVELOPMENT });
+
+  const ai = Object.create(AISystem.prototype);
+  Object.assign(ai, {
+    overseasExpansionSystem: h.system, productionSystem: h.productionSystem, mapData: map, gridSystem: h.grid,
+    canBuildUnit: (_nation: string, id: string) => id === SETTLER.id || id === CARGO_SHIP.id,
+    isSettlerProductionBlockedByHappiness: () => false,
+    getUnitProductionRuleContext: () => ({ getCityBuildings: (id: string) => h.cityManager.getBuildings(id) }),
+  });
+  ai.reconsiderContinuousProjects(cities);
+  ai.ensureExpeditionProduction(NATION, cities);
+  const portItem = h.productionSystem.getProduction(coast.id)?.item;
+  const inlandItem = h.productionSystem.getProduction(inland.id)?.item;
+  assert.equal(portItem?.kind === 'unit' && portItem.unitType.id, CARGO_SHIP.id);
+  assert.equal(inlandItem?.kind === 'unit' && inlandItem.unitType.id, SETTLER.id);
+  ai.ensureExpeditionProduction(NATION, cities);
+  assert.equal(h.productionSystem.getQueue(coast.id).length, 1);
+  assert.equal(h.productionSystem.getQueue(inland.id).length, 1);
+  assert.equal(h.logs.filter(message => message.includes('production selected')).length, 2);
+});
 
 // ── 1. Completing an expedition RELEASES the Cargo Ship (does not destroy it). ──
 test('a completed expedition releases the Cargo Ship for reuse instead of retiring it', () => {

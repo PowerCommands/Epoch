@@ -3393,6 +3393,8 @@ export class GameScene extends Phaser.Scene {
       ({ nationId, message }) => logManager.info({ nationId, category: 'unit', message }),
     );
     unitActionToolbox.setSabotageAvailabilityProvider(infrastructureSabotageSystem);
+    // Air strikes bomb enemy tile infrastructure through the same sabotage system.
+    combatSystem.setInfrastructureSabotageSystem(infrastructureSabotageSystem);
 
     // Covert actions (spying, sabotage, partisan/rebel/privateer raids) generate
     // Suspicion on the victim via a simple deterministic detection model. Player
@@ -3495,6 +3497,13 @@ export class GameScene extends Phaser.Scene {
       if (STRATEGIC_WEAPONS[unit.unitType.id]) {
         const reason = combatSystem.strategicWeapons.getLaunchFailure(unit, targetTile.x, targetTile.y);
         if (reason) { logManager.info({ nationId: unit.ownerId, category: 'combat', message: `Launch unavailable: ${reason}` }); return false; }
+        return combatSystem.tryAttack(unit, targetTile.x, targetTile.y, { source: 'human-ui' });
+      }
+      // Aircraft strike remote tiles: a unit, a city, OR standalone
+      // infrastructure (improvements / buildings) are all valid targets. Defer
+      // entirely to the air-operations targeting rules (range, war, interception).
+      if (unit.unitType.aircraftRole) {
+        if (!combatSystem.airOperations.canTarget(unit, targetTile)) return false;
         return combatSystem.tryAttack(unit, targetTile.x, targetTile.y, { source: 'human-ui' });
       }
       const targetUnitAtTile = unitManager.getUnitAt(targetTile.x, targetTile.y);
