@@ -1,14 +1,16 @@
+import { drawScenicActivity, type ScenicActivity } from './ScenicActivities';
 import type Phaser from 'phaser';
 import { drawStationTrain } from './StationTrain';
 import { drawSewerFlow } from './SewerFlow';
 import { drawContainerPort } from './ContainerPortActivity';
-export type BuildingActivity='library'|'circus'|'courthouse'|'colosseum'|'stable'|'stone_works'|'sewers'|'railway_station'|'container_port';
+export type BuildingActivity=ScenicActivity|'library'|'circus'|'courthouse'|'colosseum'|'stable'|'stone_works'|'sewers'|'railway_station'|'container_port';
 const ease=(q:number)=>{const v=Math.max(0,Math.min(1,q));return v*v*(3-2*v);};
 export function stoneCranePose(t:number,seed:number) {
   const cycle=(t+seed*12)%12,half=cycle>=6?1:0,phase=cycle%6;
   return {angle:(half+ease((phase-2)/2))*Math.PI,lift:phase<2?ease(phase/2):phase<4?1:1-ease((phase-4)/2)};
 }
 export function drawBuildingActivity(g:Phaser.GameObjects.Graphics,s:Phaser.GameObjects.Image,kind:BuildingActivity,t:number,seed:number,detail:number):void {
+  if(kind==='lumber_mill'||kind==='taj_mahal'||kind==='garden'||kind==='farm'||kind==='great_wall'||kind==='opera_house'||kind==='dock') {drawScenicActivity(g,s,kind,t,seed,detail);return;}
   if(kind==='container_port') {drawContainerPort(g,s,t,seed,detail);return;}
   if(kind==='railway_station') {drawStationTrain(g,s,t,seed,detail);return;}
   if(kind==='sewers') {drawSewerFlow(g,s,t,seed,detail);return;}

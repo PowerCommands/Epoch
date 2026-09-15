@@ -290,6 +290,17 @@ export class AmbientSprites {
       }
       if(profile.rotors?.length || profile.parts?.length) this.drawRotors(b,t,detail);
       if(profile.offshore && b.drawing && !s.isTinted) this.drawOffshoreActivity(g,b,t,detail);
+      if(profile.buildingActivity==='taj_mahal') {
+        const glowDepth=s.depth-.01;
+        let glow=this.layers.get(glowDepth);
+        if(!glow) {glow=this.scene.add.graphics().setDepth(glowDepth).setName('taj-mahal-backlight');this.layers.set(glowDepth,glow);}
+        const center=matrix.transformPoint((.5-s.originX)*s.width,(.40-s.originY)*s.height);
+        const pulse=.8+.2*Math.sin(t*.8+b.seed*6);
+        for(let n=8;n>0;n--) {
+          glow.fillStyle(n%2?0xc4b5f5:0x9bdbdf,s.alpha*detail*pulse*.018);
+          glow.fillEllipse(center.x,center.y,Math.abs(w)*(.43+n*.035),Math.abs(h)*(.49+n*.035));
+        }
+      }
       if(profile.buildingActivity) drawBuildingActivity(g,s,profile.buildingActivity,t,b.seed,detail);
       if(profile.bombs || profile.parts?.some(part=>part.launch)) this.drawAircraftWeapons(g,b,t,detail);
       if(profile.shots?.length && b.drawing && !s.isTinted) this.drawWeaponShots(g,b,t,detail);

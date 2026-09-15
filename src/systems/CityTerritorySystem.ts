@@ -1,5 +1,5 @@
 import { reserveUrbanSlots } from './UrbanDevelopment';
-import type { City } from '../entities/City';
+import type { City, SettlementStage } from '../entities/City';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
 import { TileType, type MapData, type Tile } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
@@ -10,7 +10,27 @@ export interface CityTileCoord {
   y: number;
 }
 
+// Reference claim range for the standard "City" stage. Kept for external
+// consumers (e.g. CulturalSphereSystem) that size effects relative to a normal
+// city; the actual per-city expansion limit is stage-based, see
+// CLAIM_RANGE_BY_STAGE / getCityClaimRange below.
 export const CITY_CLAIM_RANGE = 5;
+
+// Maximum territory expansion range (hex ring distance from the city center)
+// per settlement stage. Governs internal cultural expansion and gold tile
+// purchases only — larger settlements project their borders further. Wonder /
+// event / leader bonuses via claimTileForCity intentionally bypass this limit.
+export const CLAIM_RANGE_BY_STAGE: Record<SettlementStage, number> = {
+  Village: 3,
+  Town: 4,
+  City: 5,
+  Metropolis: 6,
+};
+
+export function getCityClaimRange(city: City): number {
+  return CLAIM_RANGE_BY_STAGE[city.settlementStage] ?? CITY_CLAIM_RANGE;
+}
+
 const CLAIM_BASE_COST = 5;
 const CLAIM_COST_PER_OWNED_TILE = 2;
 
@@ -100,7 +120,7 @@ export class CityTerritorySystem {
         if (tile.ownerId !== undefined) return false;
         const distance = this.getExpansionRingDistance(city, tile);
         if (distance < 2) return false;
-        if (distance > CITY_CLAIM_RANGE) return false;
+        if (distance > getCityClaimRange(city)) return false;
         return true;
       })
       .map((tile) => ({ x: tile.x, y: tile.y }))
@@ -134,7 +154,7 @@ export class CityTerritorySystem {
       if (ownedSet.has(key)) continue;
       if (tile.ownerId !== undefined) continue;
       const distance = this.getExpansionRingDistance(city, tile);
-      if (distance < 2 || distance > CITY_CLAIM_RANGE) continue;
+      if (distance < 2 || distance > getCityClaimRange(city)) continue;
       const ringCandidates = candidatesByRing.get(distance) ?? [];
       ringCandidates.push(tile);
       candidatesByRing.set(distance, ringCandidates);
@@ -282,7 +302,7 @@ export class CityTerritorySystem {
     }
     return this.gridSystem.getTilesInRange(
       { x: city.tileX, y: city.tileY },
-      CITY_CLAIM_RANGE,
+      getCityClaimRange(city),
       mapData,
       { includeCenter: true },
     );

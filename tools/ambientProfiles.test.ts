@@ -61,7 +61,7 @@ test('organic idles have rests, independent phases and variation across cycles',
 test('landmarks and cities never receive whole-structure movement', () => {
   for(const kind of ['city','building','wonder'] as const)for(const p of Object.values(AMBIENT_PROFILES[kind])) {assert.equal(p.joints,undefined);assert.equal(p.float,undefined);}
   for(const [id,p] of Object.entries(AMBIENT_PROFILES.wonder)) {
-    assert.ok(p.effects.length,`${id} needs a signature`);
+    assert.ok(p.effects.length || p.buildingActivity,`${id} needs a signature`);
     if(id!=='hanging_gardens')assert.equal(p.joints,undefined);
   }
   for(const id of ['stone'])assert.equal(AMBIENT_PROFILES.resource[id].effects.length,0);

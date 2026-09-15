@@ -256,3 +256,15 @@ Building and wonder reservations replace the finished artwork with these shared 
 | --- | --- |
 | construction_land | Generic scaffold and unfinished shell; carpenter forearm and hammer strike the workbench continuously. |
 | construction_water | Construction barge; lattice crane boom slews through 360 degrees while a suspended crate is raised and lowered. Coast and Ocean use this view; other terrain uses land. |
+
+### Scenic activity additions
+
+| Sprite | Artwork activity |
+| --- | --- |
+| dock | Fisher on the right pier casts a float, catches a fish and reels in. |
+| lumber_mill | Rotating saw, chips during cutting, cut log rolls to the foreground pile. |
+| taj-mahal | Soft backlight behind the monument; traveling ripples confined to the reflecting pool. |
+| garden | Central basin with radial mushroom-shaped water jets and ripples. |
+| farm | Farmer swings a scythe; a small patch of wheat bends with the cut. |
+| great_wall | Walkers follow exposed walkways and disappear into towers. |
+| opera_house | Masked Phantom with a dark cape on stage; tiered audience waves and applauds. |

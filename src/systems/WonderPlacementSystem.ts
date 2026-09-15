@@ -135,6 +135,8 @@ export class WonderPlacementSystem {
     const tile = this.findReservedTile(cityId, wonderId, mapData);
     if (!tile || tile.urbanSlot) return null;
 
+    const wonder = getWonderById(wonderId);
+    if (wonder?.placement?.landOnly && (tile.type === TileType.Ocean || tile.type === TileType.Coast || tile.type === TileType.Mountain)) return null;
     tile.wonderConstruction = undefined;
     tile.wonderId = wonderId;
     return tile;

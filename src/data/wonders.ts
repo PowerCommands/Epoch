@@ -55,6 +55,7 @@ export const HANGING_GARDENS: WonderType = {
 
 export const GREAT_WALL: WonderType = {
   id: 'great_wall',
+  placement: { landOnly: true },
   name: 'Great Wall',
   era: 'classical',
   productionCost: 500,
